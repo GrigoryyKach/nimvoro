@@ -1,0 +1,43 @@
+[package]
+name = "nimvoro"
+version = "1.0.0"
+description = "NIMVORO — лаунчер набора утилит"
+edition = "2021"
+
+[lib]
+name = "nimvoro_lib"
+# Только десктоп: cdylib нужен для мобильных сборок и ломает линковку на GNU-тулчейне.
+crate-type = ["rlib"]
+# Тесты — в tests/logic.rs: только туда tauri-build может подложить манифест Windows.
+test = false
+doctest = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+dirs = "7.0.0"
+futures-util = "0.3.34"
+hex = "0.4.3"
+reqwest = { version = "0.13.5", default-features = false, features = ["native-tls", "stream", "json", "charset", "http2"] }
+same-file = "1.0.6"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+sysinfo = "0.40.1"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+thiserror = "2.0.21"
+tokio = { version = "1.54.1", features = ["fs", "rt", "sync", "time", "macros"] }
+zip = { version = "9.5.0", default-features = false, features = ["deflate"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+codegen-units = 1
+
+[dev-dependencies]
+dirs = "7.0.0"

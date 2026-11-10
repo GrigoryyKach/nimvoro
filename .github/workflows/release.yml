@@ -1,0 +1,55 @@
+name: Release
+
+# Собирает установщик NIMVORO (NSIS) и публикует GitHub Release при пуше тега vX.Y.Z.
+# Лаунчер сам находит в релизе файл *-setup.exe и предлагает обновиться.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Версии совпадают с тегом
+        shell: pwsh
+        run: |
+          $pkg = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $conf = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $cargo = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version\s*=\s*"(.+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
+          if ($pkg -ne $conf -or $pkg -ne $cargo) { throw "Версии расходятся: package.json $pkg, tauri.conf.json $conf, Cargo.toml $cargo" }
+          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -ne "v$pkg") { throw "Тег ${{ github.ref_name }} не совпадает с версией $pkg" }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: Проверка типов и сборка интерфейса
+        run: npm run build
+
+      - name: Тесты
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: NIMVORO ${{ github.ref_name }}
+          releaseBody: Установщик для Windows — файл *-setup.exe ниже. Уже установленный NIMVORO предложит обновиться сам.
+          releaseDraft: false
+          prerelease: false
