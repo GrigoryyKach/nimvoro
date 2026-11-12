@@ -1,4 +1,4 @@
-/* NIMVORO — палитра и компоненты набора (как smart_switcher/src/settings/styles.css и theme.rs). */
+/* NIMVORO: palette and components of the suite (same as smart_switcher/src/settings/styles.css and theme.rs). */
 
 :root {
   --bg: #f4f5f8;
@@ -94,7 +94,7 @@ button { font: inherit; color: inherit; }
 .ico svg { width: 100%; height: 100%; }
 .ico.tiny { width: 12px; height: 12px; }
 
-/* ───── заголовок окна ───── */
+/* ───── window title bar ───── */
 .titlebar {
   height: 48px; flex-shrink: 0;
   display: flex; align-items: stretch;
@@ -120,7 +120,7 @@ button { font: inherit; color: inherit; }
 .tb-btn:hover { background: var(--hover); color: var(--text); }
 .tb-btn.close:hover { background: #e5484d; color: #fff; }
 
-/* ───── панель инструментов ───── */
+/* ───── toolbar ───── */
 .toolbar {
   display: flex; align-items: center; gap: 10px;
   padding: 14px 24px;
@@ -154,7 +154,7 @@ button { font: inherit; color: inherit; }
 .seg:hover { color: var(--text); background: var(--hover); }
 .seg.active { background: var(--accent-soft); color: var(--accent); }
 
-/* ───── кнопки ───── */
+/* ───── buttons ───── */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   height: 38px; padding: 0 16px; border-radius: 9px;
@@ -190,7 +190,7 @@ button { font: inherit; color: inherit; }
 .icon-btn.spin .ico { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* кнопка с прогрессом */
+/* button with progress */
 .action { flex: 1; min-width: 0; display: flex; }
 .action > .btn { flex: 1; }
 .action.compact { flex: 0 0 210px; }
@@ -203,7 +203,7 @@ button { font: inherit; color: inherit; }
 .progress-label { position: relative; color: var(--text); font-variant-numeric: tabular-nums; mix-blend-mode: normal; }
 .btn.progress .progress-label { text-shadow: 0 0 6px var(--card); }
 
-/* ───── каталог ───── */
+/* ───── catalog ───── */
 .scroll { flex: 1; overflow-y: auto; }
 .content { padding: 8px 24px 32px; }
 .section { margin-top: 18px; }
@@ -269,11 +269,11 @@ button { font: inherit; color: inherit; }
 .tool-icon-letter { color: #fff; font-weight: 800; }
 .tool-icon.loaded .tool-icon-letter { visibility: hidden; }
 
-/* скелетон загрузки */
+/* loading skeleton */
 .card.skeleton { height: 300px; cursor: default; background: linear-gradient(100deg, var(--card) 40%, var(--card-head) 50%, var(--card) 60%) 0 0 / 200% 100%; animation: shimmer 1.2s linear infinite; }
 @keyframes shimmer { to { background-position: -200% 0; } }
 
-/* список */
+/* list */
 .list { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--card); }
 .row-item {
   display: flex; align-items: center; gap: 16px; padding: 12px 16px;
@@ -293,7 +293,7 @@ button { font: inherit; color: inherit; }
 .empty { padding: 80px 20px; text-align: center; }
 .empty-title { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
 
-/* плашка обновления лаунчера */
+/* launcher update banner */
 .banner-host:empty { display: none; }
 .banner {
   margin: 16px 24px 0; padding: 12px 16px; border-radius: 12px;
@@ -302,7 +302,7 @@ button { font: inherit; color: inherit; }
 }
 .banner-text { flex: 1; color: var(--text); }
 
-/* ───── модальные окна ───── */
+/* ───── modal windows ───── */
 .modal-backdrop {
   position: fixed; inset: 0; z-index: 50;
   background: rgba(8, 10, 16, 0.55); backdrop-filter: blur(3px);
@@ -319,6 +319,7 @@ button { font: inherit; color: inherit; }
 .modal.small { max-width: 440px; }
 .modal.medium { max-width: 640px; }
 .modal.large { max-width: 900px; }
+.modal.install { max-width: 560px; }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fadeOut { to { opacity: 0; } }
 @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
@@ -331,7 +332,21 @@ button { font: inherit; color: inherit; }
 .confirm { padding: 22px; }
 .confirm-text { color: var(--muted); line-height: 1.5; margin: 8px 0 0; user-select: text; }
 
-/* попап инструмента */
+/* install dialog */
+.install-dialog .install-body { padding: 4px 22px 0; }
+.install-dialog .modal-actions { margin: 0; padding: 18px 22px 20px; }
+.install-ident { display: flex; align-items: center; gap: 14px; padding-top: 16px; }
+.install-ident .name { font-size: 16px; font-weight: 700; }
+.folder-row { display: flex; align-items: center; gap: 8px; }
+.text-input {
+  flex: 1; min-width: 0; height: 36px; padding: 0 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--card-head); color: var(--text);
+  font-size: 12.5px; outline: 0; user-select: text;
+}
+.text-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+.check-row { margin: 16px -22px 0; padding: 14px 22px; border-top: 1px solid var(--line); border-bottom: 0; }
+
+/* tool popup */
 .details { display: flex; flex-direction: column; min-height: 0; max-height: calc(100vh - 56px); }
 .details-head { display: flex; gap: 16px; align-items: center; padding: 20px 22px; border-bottom: 1px solid var(--line); }
 .details-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -358,7 +373,7 @@ button { font: inherit; color: inherit; }
 .foot-meta { flex: 1; font-size: 12.5px; line-height: 1.5; }
 .foot-actions { display: flex; gap: 8px; align-items: center; }
 
-/* карусель */
+/* carousel */
 .carousel {
   position: relative; border-radius: 14px; overflow: hidden;
   background: #0d0f14; border: 1px solid var(--line); outline-offset: 2px;
@@ -388,7 +403,7 @@ button { font: inherit; color: inherit; }
 .dot.active { width: 22px; background: #fff; }
 .counter { position: absolute; right: 14px; color: rgba(255, 255, 255, 0.8); font-size: 11px; }
 
-/* настройки */
+/* settings */
 .settings { display: flex; flex-direction: column; max-height: calc(100vh - 56px); }
 .settings-body { overflow-y: auto; padding: 4px 22px 22px; }
 .set-card { border: 1px solid var(--line); border-radius: 12px; background: var(--card-head); }
@@ -408,7 +423,7 @@ label.set-row { cursor: pointer; }
 .switch input:checked + span::after { transform: translateX(18px); }
 .switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* меню */
+/* menu */
 .menu {
   position: fixed; z-index: 60; min-width: 230px; padding: 6px;
   background: var(--card); border: 1px solid var(--line-strong); border-radius: 12px;
@@ -422,7 +437,7 @@ label.set-row { cursor: pointer; }
 .menu-item:hover, .menu-item:focus-visible { background: var(--hover); outline: none; }
 .menu-item.danger, .menu-item.danger .ico { color: var(--bad); }
 
-/* тосты */
+/* toasts */
 .toasts { position: fixed; right: 20px; bottom: 20px; z-index: 70; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
 .toast {
   display: flex; align-items: center; gap: 10px; max-width: 460px;
@@ -436,7 +451,7 @@ label.set-row { cursor: pointer; }
 .toast.error > .ico { color: var(--bad); }
 .toast-text { flex: 1; line-height: 1.4; user-select: text; }
 
-/* полосы прокрутки */
+/* scrollbars */
 ::-webkit-scrollbar { width: 12px; height: 12px; }
 ::-webkit-scrollbar-thumb { background: rgba(127, 127, 127, 0.3); border-radius: 8px; border: 3px solid transparent; background-clip: content-box; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(127, 127, 127, 0.5); background-clip: content-box; border: 3px solid transparent; }

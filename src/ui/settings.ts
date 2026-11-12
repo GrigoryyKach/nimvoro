@@ -1,8 +1,9 @@
-// Настройки лаунчера.
+// Launcher settings.
 import { open as pickFolder } from '@tauri-apps/plugin-dialog';
 import * as act from '../actions';
 import { api, type Settings } from '../api';
 import { h, svg } from '../dom';
+import { LANGS, errorText, t as tr, tn } from '../i18n';
 import { icons } from '../icons';
 import { setView, state, subscribe } from '../store';
 import { checkLauncherUpdate } from './launcher-update';
@@ -18,7 +19,7 @@ async function save(p: Partial<Settings>): Promise<void> {
   try {
     setView(await api.saveSettings({ ...s, ...p }));
   } catch (e) {
-    toast(String(e), 'error');
+    toast(errorText(e), 'error');
   }
 }
 
@@ -39,63 +40,71 @@ export function openSettings(): void {
     const s = v.settings;
     const themeBtn = (val: Settings['theme'], label: string) =>
       h('button', { class: `seg${s.theme === val ? ' active' : ''}`, onclick: () => save({ theme: val }) }, label);
+    const langSelect = h('select', { class: 'select', 'aria-label': tr('settings.language') },
+      ...LANGS.map(l => h('option', { value: l.code, selected: l.code === s.language }, l.name)),
+    ) as HTMLSelectElement;
+    langSelect.addEventListener('change', () => save({ language: langSelect.value as Settings['language'] }));
     root.replaceChildren(
-      modalHeader('Настройки', () => m.close(), `NIMVORO ${v.launcherVersion}`),
+      modalHeader(tr('settings.title'), () => m.close(), `NIMVORO ${v.launcherVersion}`),
       h('div', { class: 'settings-body' },
-        h('h3', { class: 'caps' }, 'Установка'),
+        h('h3', { class: 'caps' }, tr('settings.install')),
         h('div', { class: 'set-card' },
           h('div', { class: 'set-row' },
             h('div', { class: 'set-text' },
-              h('div', { class: 'set-title' }, 'Папка для программ'),
-              h('div', { class: 'hint' }, 'Каждый инструмент ставится в свою подпапку. Для отдельного инструмента папку можно сменить в его карточке до установки.'),
+              h('div', { class: 'set-title' }, tr('settings.root')),
+              h('div', { class: 'hint' }, tr('settings.root.hint')),
               h('div', { class: 'path mono', title: s.installRoot }, s.installRoot),
             ),
             h('div', { class: 'set-actions' },
-              h('button', { class: 'btn ghost small', onclick: () => api.openPath(s.installRoot) }, 'Открыть'),
+              h('button', { class: 'btn ghost small', onclick: () => api.openPath(s.installRoot) }, tr('settings.open')),
               h('button', {
                 class: 'btn ghost small',
                 onclick: async () => {
-                  const picked = await pickFolder({ directory: true, title: 'Папка для программ', defaultPath: s.installRoot });
+                  const picked = await pickFolder({ directory: true, title: tr('settings.root'), defaultPath: s.installRoot });
                   if (typeof picked === 'string') save({ installRoot: picked });
                 },
-              }, svg(icons.folder), 'Изменить…'),
+              }, svg(icons.folder), tr('settings.change')),
             ),
           ),
         ),
-        h('h3', { class: 'caps' }, 'Обновления'),
+        h('h3', { class: 'caps' }, tr('settings.updates')),
         h('div', { class: 'set-card' },
-          switchRow('Проверять обновления при запуске', 'При каждом запуске NIMVORO сверяет версии всех установленных инструментов с GitHub.', s.checkUpdatesOnStart, v => save({ checkUpdatesOnStart: v })),
-          switchRow('Устанавливать обновления автоматически', 'Найденные обновления ставятся сразу. Если программа запущена, NIMVORO спросит, можно ли её закрыть.', s.autoInstallUpdates, v => save({ autoInstallUpdates: v })),
-          switchRow('Проверять обновления NIMVORO', 'Сообщать о новой версии самого лаунчера.', s.checkLauncherUpdates, v => save({ checkLauncherUpdates: v })),
+          switchRow(tr('settings.checkOnStart'), tr('settings.checkOnStart.hint'), s.checkUpdatesOnStart, v => save({ checkUpdatesOnStart: v })),
+          switchRow(tr('settings.autoInstall'), tr('settings.autoInstall.hint'), s.autoInstallUpdates, v => save({ autoInstallUpdates: v })),
+          switchRow(tr('settings.checkLauncher'), tr('settings.checkLauncher.hint'), s.checkLauncherUpdates, v => save({ checkLauncherUpdates: v })),
           h('div', { class: 'set-row' },
-            h('div', { class: 'set-text' }, h('div', { class: 'set-title' }, 'Проверить сейчас'), h('div', { class: 'hint' }, 'Инструменты и сам лаунчер')),
+            h('div', { class: 'set-text' }, h('div', { class: 'set-title' }, tr('settings.checkNow')), h('div', { class: 'hint' }, tr('settings.checkNow.hint'))),
             h('button', {
               class: 'btn ghost small',
               onclick: async () => {
                 await act.reload(true);
                 await checkLauncherUpdate(true);
                 const n = act.updatable().length;
-                toast(n ? `Доступно обновлений: ${n}` : 'Всё обновлено', n ? 'info' : 'ok');
+                toast(n ? tn('toast.updatesAvailable', n) : tr('toast.upToDate'), n ? 'info' : 'ok');
               },
-            }, svg(icons.refresh), 'Проверить'),
+            }, svg(icons.refresh), tr('settings.check')),
           ),
         ),
-        h('h3', { class: 'caps' }, 'Оформление'),
+        h('h3', { class: 'caps' }, tr('settings.appearance')),
         h('div', { class: 'set-card' },
           h('div', { class: 'set-row' },
-            h('div', { class: 'set-text' }, h('div', { class: 'set-title' }, 'Тема')),
-            h('div', { class: 'segmented' }, themeBtn('system', 'Как в системе'), themeBtn('light', 'Светлая'), themeBtn('dark', 'Тёмная')),
+            h('div', { class: 'set-text' }, h('div', { class: 'set-title' }, tr('settings.theme'))),
+            h('div', { class: 'segmented' }, themeBtn('system', tr('settings.theme.system')), themeBtn('light', tr('settings.theme.light')), themeBtn('dark', tr('settings.theme.dark'))),
+          ),
+          h('div', { class: 'set-row' },
+            h('div', { class: 'set-text' }, h('div', { class: 'set-title' }, tr('settings.language')), h('div', { class: 'hint' }, tr('settings.language.hint'))),
+            langSelect,
           ),
         ),
-        h('h3', { class: 'caps' }, 'О программе'),
+        h('h3', { class: 'caps' }, tr('settings.about')),
         h('div', { class: 'set-card' },
           h('div', { class: 'set-row' },
             h('div', { class: 'set-text' },
               h('div', { class: 'set-title' }, `NIMVORO ${v.launcherVersion}`),
-              h('div', { class: 'hint' }, 'Лаунчер набора утилит. Каталог инструментов берётся из GitHub, новый инструмент добавляется одной строкой в catalog.json.'),
+              h('div', { class: 'hint' }, tr('settings.about.text')),
             ),
             h('div', { class: 'set-actions' },
-              h('button', { class: 'btn ghost small', onclick: () => api.openPath(v.dataDir) }, 'Папка данных'),
+              h('button', { class: 'btn ghost small', onclick: () => api.openPath(v.dataDir) }, tr('settings.dataFolder')),
               h('button', { class: 'btn ghost small', onclick: () => act.openUrl('https://github.com/GrigoryyKach/nimvoro') }, 'GitHub', svg(icons.external, 'ico tiny')),
             ),
           ),

@@ -1,84 +1,93 @@
 # NIMVORO
 
-Лаунчер набора утилит для Windows: каталог инструментов, установка в один клик, обновления и выбор папки для каждой программы.
-Написан на [Tauri 2](https://v2.tauri.app/): интерфейс — TypeScript без фреймворка, логика — Rust.
+A launcher for a suite of Windows utilities: a catalog of tools, one-click install, updates and a folder of your choice for every program.
+Built with [Tauri 2](https://v2.tauri.app/): the UI is plain TypeScript, the logic is Rust.
 
-**Скачать:** установщик `NIMVORO_x.y.z_x64-setup.exe` на странице [последнего релиза](https://github.com/GrigoryyKach/nimvoro/releases/latest).
-Ставится в профиль пользователя, права администратора не нужны.
+**Download:** the installer `NIMVORO_x.y.z_x64-setup.exe` from the [latest release](https://github.com/GrigoryyKach/nimvoro/releases/latest).
+It installs into your user profile, no administrator rights needed.
 
-## Что умеет
+**Languages:** English (default), Russian and Ukrainian. Pick one in Settings; it applies immediately.
 
-- **Каталог карточек.** Иконка, версия, статус, размер загрузки, дата обновления. Плитка или список, сортировка, поиск (Ctrl+F).
-- **Установка в один клик** — кнопкой на карточке или в попапе. Архив скачивается из GitHub Release, контрольная сумма SHA-256 сверяется с той, что посчитал GitHub, затем архив распаковывается.
-- **Попап инструмента.** Описание, карусель скриншотов (стрелки, точки, клавиши ← →), возможности, требования и папка установки.
-- **Своя папка для каждого инструмента.** Общая папка задаётся в настройках, для отдельного инструмента её можно сменить до установки. У установленных — кнопка «Открыть папку программы».
-- **Обновления.** Переключатель «Проверять обновления при запуске» сверяет все установленные инструменты с GitHub. Можно включить автоматическую установку обновлений. Кнопка «Обновить все».
-  Если программа запущена, NIMVORO спросит, можно ли её закрыть.
-- **Обновление по просьбе утилиты.** В каждой утилите есть свой переключатель автопроверки. Кнопка «Обновить» в утилите вызывает `NIMVORO.exe --update <id>`:
-  лаунчер закрывает программу, ставит новую версию и запускает её снова.
-- **Обновление самого лаунчера** — плашка над каталогом, установщик скачивается и запускается сам.
-- **Аккуратное удаление.** Удаляются только файлы из архива. Настройки программы и файлы, которые пользователь положил в её папку, остаются.
-- Светлая и тёмная тема (или как в системе), тот же стиль, что у утилит набора.
+## Features
 
-## Инструменты в каталоге
+- **Card catalog.** Icon, version, status, download size, update date. Grid or list, sorting, search (Ctrl+F).
+- **One-click install** from a card or from the details popup. A dialog asks for the install folder (prefilled, with a Browse button) and whether to create a desktop shortcut (the choice is remembered). The archive is downloaded from a GitHub Release, its SHA-256 is compared with the one GitHub computed, then it is extracted.
+- **Shortcuts.** Every install creates a Start-menu shortcut (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\<Name>.lnk`), plus a desktop one if chosen. Uninstall removes them. On startup the launcher restores a missing Start-menu shortcut.
+- **Details popup.** Description, screenshot carousel (arrows, dots, keys left/right), features, requirements and the install folder. Texts come in the language of the launcher when the tool provides a translation.
+- **Updates.** "Check for updates on startup" compares all installed tools with GitHub; optionally install them automatically; "Update all" button. If a program is running, NIMVORO asks before closing it. Updates and "Update all" never show the install dialog and keep the folder and shortcuts.
+- **Update on request from a tool.** Each tool has its own auto-check switch. Its "Update" button runs `NIMVORO.exe --update <id>`: the launcher closes the program, installs the new version and starts it again.
+- **Launcher self-update.** A banner above the catalog; the installer is downloaded and started for you.
+- **Careful uninstall.** Only files from the archive are removed. Program settings and files the user put into the folder stay.
+- **Themes.** System / Light / Dark, in the same style as the suite's tools.
 
-| Инструмент | Репозиторий |
+## Tools in the catalog
+
+| Tool | Repository |
 |---|---|
-| Random Wheel — колесо фортуны | [random-wheel](https://github.com/GrigoryyKach/random-wheel) |
-| Save URLs — библиотека ссылок в трее | [save-urls](https://github.com/GrigoryyKach/save-urls) |
-| Smart Switcher — автопереключатель раскладки | [smart-switcher](https://github.com/GrigoryyKach/smart-switcher) |
-| transluent — ИИ-ассистент для созвонов | [transluent](https://github.com/GrigoryyKach/transluent) |
-| FPS Overlay — FPS и нагрузка поверх игр | [fps-overlay](https://github.com/GrigoryyKach/fps-overlay) |
+| Random Wheel: a wheel of fortune | [random-wheel](https://github.com/GrigoryyKach/random-wheel) |
+| Save URLs: a link library in the tray | [save-urls](https://github.com/GrigoryyKach/save-urls) |
+| Smart Switcher: keyboard layout auto-switcher | [smart-switcher](https://github.com/GrigoryyKach/smart-switcher) |
+| Sidekick: AI assistant for calls | [sidekick](https://github.com/GrigoryyKach/sidekick) |
+| FPS Overlay: FPS and load on top of games | [fps-overlay](https://github.com/GrigoryyKach/fps-overlay) |
 
-## Как добавить новый инструмент
+## How to add a tool
 
-Лаунчер не нужно пересобирать: он читает [`catalog.json`](catalog.json) из ветки `main` при каждом запуске.
+The launcher does not need to be rebuilt: it reads [`catalog.json`](catalog.json) from the `main` branch on every start.
 
-1. В репозитории инструмента — `nimvoro.json` (описание, иконка, скриншоты, имя exe и архива).
-2. Релиз с zip-архивом: скопируйте `.github/workflows/release.yml` из любой утилиты набора.
-3. Строка `{ "id": "...", "repo": "owner/repo" }` в `catalog.json`.
+1. Add `nimvoro.json` to the tool's repository (description, icon, screenshots, exe and archive names, translations).
+2. Publish a release with a zip archive: copy `.github/workflows/release.yml` from any tool of the suite.
+3. Add a line `{ "id": "...", "repo": "owner/repo" }` to `catalog.json`.
 
-Подробно, с форматом манифеста и протоколом обновлений: [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md).
-Иконку в общем стиле рисует `tools/make-icons.js` (запуск: `npx electron tools/make-icons.js icons-out`).
+Details, including the manifest format, the language marker, themes, shortcuts and the update protocol: [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md).
+The icons of the suite are drawn by `tools/make-icons.js`; run it with any Electron from the suite root:
+`<electron> tools/make-icons.js <OwnLauncher root> [scratch dir]` (for example with the Electron in `projects/smart_switcher/node_modules`).
 
-## Устройство
+## Layout
 
 ```
-src/                       интерфейс
-  main.ts                  окно, панель инструментов, разделы, порядок запуска
-  api.ts                   типизированные вызовы бэкенда
-  store.ts, actions.ts     состояние и действия (установка, обновление, удаление)
-  ui/cards.ts              карточки, кнопка «Установить / Открыть / Обновить» с прогрессом
-  ui/details.ts            попап с каруселью
-  ui/settings.ts           настройки
+src/                       UI
+  main.ts                  window, toolbar, sections, startup sequence
+  api.ts                   typed backend calls
+  i18n.ts                  English / Russian / Ukrainian strings, plurals, backend error codes
+  format.ts                locale-aware sizes and dates, localized manifest fields
+  store.ts, actions.ts     state and actions (install, update, uninstall)
+  ui/cards.ts              cards, the Install / Open / Update button with progress
+  ui/install-dialog.ts     install dialog (folder, desktop shortcut)
+  ui/details.ts            details popup with the carousel
+  ui/settings.ts           settings
 src-tauri/src/
-  catalog.rs               catalog.json → nimvoro.json → последний GitHub Release, кеш на случай без сети
-  install.rs               загрузка, проверка SHA-256, распаковка без «../», закрытие запущенной программы
-  store.rs                 настройки и список установленного в %APPDATA%\NIMVORO
-  lib.rs                   команды, единственный экземпляр, --update <id>
+  catalog.rs               catalog.json -> nimvoro.json -> latest GitHub Release, cache for offline use
+  install.rs               download, SHA-256, extraction without "../", closing a running program, language marker
+  shortcuts.rs             Start-menu and desktop .lnk files through the shell COM API
+  store.rs                 settings and installed list in %APPDATA%\NIMVORO
+  lib.rs                   commands, single instance, --update <id>
 ```
 
-Данные лаунчера: `%APPDATA%\NIMVORO\` (`settings.json`, `installed.json`, `cache.json`, `launcher.json` — путь к лаунчеру для утилит).
-Программы по умолчанию ставятся в `%LOCALAPPDATA%\NIMVORO\Apps\<Название>`.
+Launcher data lives in `%APPDATA%\NIMVORO\` (`settings.json`, `installed.json`, `cache.json`, `launcher.json`: the launcher path for the tools).
+Programs are installed into `%LOCALAPPDATA%\NIMVORO\Apps\<Name>` by default.
 
-## Разработка
+Errors from the Rust side reach the UI as codes (`E_...`) that `src/i18n.ts` translates, so every message follows the chosen language.
+
+## Development
 
 ```bash
 npm install
 npm run tauri dev
 ```
 
-Нужны Node.js 22+ и Rust. Релизы собираются на MSVC в GitHub Actions. Локально подходит и GNU-тулчейн (MinGW):
-`build.rs` убирает конфликт манифестов, а рядом с exe нужен `WebView2Loader.dll` (cargo кладёт его в `target/`).
+Node.js 22+ and Rust are required. Releases are built on MSVC in GitHub Actions. Locally the GNU toolchain (MinGW) works too:
+`build.rs` removes the manifest conflict, and `WebView2Loader.dll` must sit next to the exe (cargo puts it into `target/`).
 
-Тесты: `cargo test --manifest-path src-tauri/Cargo.toml`.
+Tests: `cargo test --manifest-path src-tauri/Cargo.toml`.
 
-## Релиз
+To try installs without touching your real data, set `NIMVORO_DATA_DIR`, `NIMVORO_START_MENU_DIR` and `NIMVORO_DESKTOP_DIR` to throwaway folders before `npm run tauri dev`.
 
-Поднимите версию в `package.json`, `src-tauri/tauri.conf.json` и `src-tauri/Cargo.toml`, затем:
+## Release
+
+Bump the version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, then:
 
 ```bash
-git tag v1.0.1 && git push --tags
+git tag v1.1.1 && git push --tags
 ```
 
-GitHub Actions соберёт установщик и опубликует релиз. Установленные лаунчеры предложат обновиться.
+GitHub Actions builds the installer and publishes the release. Installed launchers offer the update.

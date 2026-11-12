@@ -1,10 +1,11 @@
-// Состояние интерфейса. Источник истины — бэкенд: каждое действие возвращает свежий View.
+// UI state. The backend is the source of truth: every action returns a fresh View.
+import { setLang } from './i18n';
 import type { Progress, Release, Settings, Tool, View } from './api';
 
 export interface State {
   view: View | null;
   loading: boolean;
-  /** Ход установки по id инструмента. */
+  /** Install progress by tool id. */
   progress: Record<string, Progress | undefined>;
   search: string;
   launcherUpdate: Release | null;
@@ -26,13 +27,14 @@ export function subscribe(fn: Listener): void {
   listeners.add(fn);
 }
 
-/** Прогресс меняется часто — перерисовывается только кнопка инструмента. */
+/** Progress changes often, so only the tool's button is redrawn. */
 export function onProgress(fn: (id: string) => void): void {
   progressListeners.add(fn);
 }
 
 export function setView(v: View): void {
   state.view = v;
+  setLang(v.settings.language); // before any subscriber re-renders
   emit();
 }
 
@@ -58,7 +60,7 @@ export function tool(id: string): Tool | undefined {
   return state.view?.tools.find(t => t.id === id);
 }
 
-/** Процент установки (0–100) или null, если сейчас не скачивается. */
+/** Install percentage (0-100), or null when nothing is downloading. */
 export function percent(p: Progress | undefined): number | null {
   if (!p) return null;
   if (p.stage === 'download') return p.total ? Math.min(99, Math.floor((p.received / p.total) * 100)) : 0;

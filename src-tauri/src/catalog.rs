@@ -1,15 +1,19 @@
-//! Каталог инструментов: `catalog.json` → `nimvoro.json` каждого репозитория → последний GitHub Release.
-//! Лаунчер не знает об утилитах заранее: новый инструмент = строка в `catalog.json` (см. docs/ADDING_A_TOOL.md).
+//! Tool catalog: `catalog.json` -> each repository's `nimvoro.json` -> latest GitHub Release.
+//! The launcher knows nothing about the tools in advance: a new tool is one line in `catalog.json` (see docs/ADDING_A_TOOL.md).
+//!
+//! Error strings returned here are codes (`E_...[:arg|arg]`) that the frontend translates; see `src/i18n.ts`.
 
 use crate::store::{self, data_dir};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::Duration;
 
-/// Репозиторий самого лаунчера: отсюда берётся свежий `catalog.json` и обновления NIMVORO.
+/// Repository of the launcher itself: the fresh `catalog.json` and launcher updates come from here.
 pub const LAUNCHER_REPO: &str = "GrigoryyKach/nimvoro";
-/// Копия каталога, вшитая в сборку, — если сети нет при первом запуске.
+/// Copy of the catalog baked into the build, used when there is no network on the first start.
 const BUNDLED_CATALOG: &str = include_str!("../../catalog.json");
+/// Tools that left the catalog (renamed or dropped). Cached entries and installed records for them are ignored.
+pub const RETIRED_IDS: [&str; 1] = ["transluent"];
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct CatalogEntry {
@@ -27,7 +31,7 @@ pub struct Release {
     pub asset_name: Option<String>,
     pub asset_url: Option<String>,
     pub asset_size: u64,
-    /// `sha256:<hex>` — GitHub считает его сам для каждого файла релиза.
+    /// `sha256:<hex>`: GitHub computes it for every release file.
     pub digest: Option<String>,
 }
 
@@ -36,11 +40,18 @@ pub struct Release {
 pub struct Tool {
     pub id: String,
     pub repo: String,
-    /// `nimvoro.json` как есть: фронтенд сам берёт нужные поля.
+    /// `nimvoro.json` as is: the frontend picks the fields it needs (including `i18n`).
     pub manifest: Value,
     pub release: Option<Release>,
-    /// Что пошло не так при загрузке (нет релиза, нет сети…).
+    /// What went wrong while loading (no release, no network...), as an error code.
     pub error: Option<String>,
+}
+
+impl Tool {
+    /// Display name from the manifest (English base field).
+    pub fn name(&self) -> String {
+        self.manifest["name"].as_str().unwrap_or(&self.id).to_string()
+    }
 }
 
 #[derive(Deserialize, Serialize, Default)]
@@ -60,7 +71,7 @@ pub fn client() -> reqwest::Client {
 
 fn github_get(c: &reqwest::Client, url: &str) -> reqwest::RequestBuilder {
     let mut r = c.get(url).header("Accept", "application/vnd.github+json");
-    // Необязательно: токен поднимает лимит API с 60 до 5000 запросов в час.
+    // Optional: a token raises the API limit from 60 to 5000 requests per hour.
     if let Ok(t) = std::env::var("GITHUB_TOKEN") {
         if !t.is_empty() {
             r = r.bearer_auth(t);
@@ -81,10 +92,11 @@ async fn fetch_catalog(c: &reqwest::Client) -> Vec<CatalogEntry> {
         }
         r.json::<Vec<CatalogEntry>>().await.ok()
     };
-    match remote.await {
+    let list = match remote.await {
         Some(list) if !list.is_empty() => list,
         _ => serde_json::from_str(BUNDLED_CATALOG).unwrap_or_default(),
-    }
+    };
+    list.into_iter().filter(|e| !RETIRED_IDS.contains(&e.id.as_str())).collect()
 }
 
 pub fn parse_release(v: &Value, asset_name: Option<&str>) -> Release {
@@ -93,7 +105,7 @@ pub fn parse_release(v: &Value, asset_name: Option<&str>) -> Release {
         list.iter().find(|a| {
             let name = a["name"].as_str().unwrap_or_default();
             match asset_name {
-                // «*-setup.exe» — любое имя с таким окончанием.
+                // "*-setup.exe": any name with this ending.
                 Some(n) if n.starts_with('*') => name.ends_with(&n[1..]),
                 Some(n) => name == n,
                 None => name.ends_with(".zip"),
@@ -116,12 +128,12 @@ pub async fn latest_release(c: &reqwest::Client, repo: &str, asset_name: Option<
     let r = github_get(c, &format!("https://api.github.com/repos/{repo}/releases/latest"))
         .send()
         .await
-        .map_err(|e| format!("нет связи с GitHub: {e}"))?;
+        .map_err(|e| format!("E_NETWORK:{e}"))?;
     match r.status().as_u16() {
         200 => {}
-        404 => return Err("релизов пока нет".into()),
-        403 | 429 => return Err("GitHub временно ограничил запросы, попробуйте позже".into()),
-        s => return Err(format!("GitHub ответил {s}")),
+        404 => return Err("E_NO_RELEASES".into()),
+        403 | 429 => return Err("E_RATE_LIMIT".into()),
+        s => return Err(format!("E_GITHUB_STATUS:{s}")),
     }
     let v: Value = r.json().await.map_err(|e| e.to_string())?;
     Ok(parse_release(&v, asset_name))
@@ -129,11 +141,11 @@ pub async fn latest_release(c: &reqwest::Client, repo: &str, asset_name: Option<
 
 async fn fetch_tool(c: &reqwest::Client, e: &CatalogEntry) -> Tool {
     let manifest = async {
-        let r = c.get(raw_url(&e.repo, "nimvoro.json")).timeout(Duration::from_secs(15)).send().await.map_err(|e| e.to_string())?;
+        let r = c.get(raw_url(&e.repo, "nimvoro.json")).timeout(Duration::from_secs(15)).send().await.map_err(|e| format!("E_NETWORK:{e}"))?;
         if !r.status().is_success() {
-            return Err(format!("нет nimvoro.json ({})", r.status().as_u16()));
+            return Err(format!("E_NO_MANIFEST:{}", r.status().as_u16()));
         }
-        r.json::<Value>().await.map_err(|e| format!("nimvoro.json: {e}"))
+        r.json::<Value>().await.map_err(|e| format!("E_MANIFEST_PARSE:{e}"))
     };
     let (manifest, release) = match manifest.await {
         Ok(m) => {
@@ -146,7 +158,7 @@ async fn fetch_tool(c: &reqwest::Client, e: &CatalogEntry) -> Tool {
     let error = match (&manifest, &release) {
         (Err(e), _) => Some(e.clone()),
         (_, Err(e)) => Some(e.clone()),
-        (_, Ok(r)) if r.asset_url.is_none() => Some("в релизе нет архива для Windows".into()),
+        (_, Ok(r)) if r.asset_url.is_none() => Some("E_NO_ASSET".into()),
         _ => None,
     };
     Tool {
@@ -158,17 +170,24 @@ async fn fetch_tool(c: &reqwest::Client, e: &CatalogEntry) -> Tool {
     }
 }
 
-/// Загружает каталог. `refresh = false` — взять из кеша, если он есть (запуск без сети и без проверки обновлений).
+/// Loads the catalog. `refresh = false` takes it from the cache when there is one (start without network or update check).
 pub async fn load(refresh: bool) -> Vec<Tool> {
     let path = data_dir().join("cache.json");
-    let cached: Cache = std::fs::read_to_string(&path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+    let mut cached: Cache = std::fs::read_to_string(&path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+    cached.tools.retain(|t| !RETIRED_IDS.contains(&t.id.as_str()));
+    // Errors cached by 1.0.0 are Russian sentences, not codes; drop them rather than show them in the wrong language.
+    for t in &mut cached.tools {
+        if t.error.as_deref().is_some_and(|e| !e.starts_with("E_")) {
+            t.error = None;
+        }
+    }
     if !refresh && !cached.tools.is_empty() {
         return cached.tools;
     }
     let c = client();
     let entries = fetch_catalog(&c).await;
     let fresh = futures_util::future::join_all(entries.iter().map(|e| fetch_tool(&c, e))).await;
-    // Где не удалось загрузить — оставляем то, что было в кеше, но с пометкой об ошибке.
+    // Where loading failed, keep what the cache had, but with the error attached.
     let tools: Vec<Tool> = fresh
         .into_iter()
         .map(|mut t| {

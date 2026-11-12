@@ -1,4 +1,4 @@
-// Маленький помощник для создания DOM без фреймворка.
+// Tiny helper for building DOM without a framework.
 
 type Child = Node | string | number | null | undefined | false;
 type Attrs = Record<string, unknown> & { class?: string; style?: string };
@@ -26,7 +26,7 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Attrs | 
   return el;
 }
 
-/** Элемент из SVG-строки (значки из icons.ts). */
+/** Element from an SVG string (icons from icons.ts). */
 export function svg(markup: string, cls = 'ico'): HTMLElement {
   const span = document.createElement('span');
   span.className = cls;

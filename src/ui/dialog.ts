@@ -1,5 +1,6 @@
-// Модальные окна: общая обёртка и диалог подтверждения.
+// Modal windows: shared wrapper and the confirm dialog.
 import { h, svg } from '../dom';
+import { t as tr } from '../i18n';
 import { icons } from '../icons';
 
 export interface ModalHandle {
@@ -7,7 +8,7 @@ export interface ModalHandle {
   close: () => void;
 }
 
-/** Открывает модальное окно. Esc и щелчок по фону закрывают его. */
+/** Opens a modal window. Esc and a click on the backdrop close it. */
 export function openModal(content: HTMLElement, cls = '', onClose?: () => void): ModalHandle {
   const backdrop = h('div', { class: 'modal-backdrop' });
   const box = h('div', { class: `modal ${cls}`, role: 'dialog', 'aria-modal': 'true' }, content);
@@ -40,7 +41,7 @@ export function modalHeader(title: string, close: () => void, sub?: string): HTM
     'div',
     { class: 'modal-head' },
     h('div', null, h('div', { class: 'modal-title' }, title), sub && h('div', { class: 'modal-sub' }, sub)),
-    h('button', { class: 'icon-btn', 'aria-label': 'Закрыть', onclick: close }, svg(icons.close)),
+    h('button', { class: 'icon-btn', 'aria-label': tr('common.close'), onclick: close }, svg(icons.close)),
   );
 }
 
@@ -61,7 +62,7 @@ export function confirmDialog(o: { title: string; text: string; confirm: string;
       h(
         'div',
         { class: 'modal-actions' },
-        h('button', { class: 'btn ghost', onclick: () => finish(false) }, 'Отмена'),
+        h('button', { class: 'btn ghost', onclick: () => finish(false) }, tr('common.cancel')),
         h('button', { class: `btn ${o.danger ? 'danger' : 'primary'}`, autofocus: true, onclick: () => finish(true) }, o.confirm),
       ),
     );

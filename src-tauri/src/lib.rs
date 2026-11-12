@@ -1,14 +1,19 @@
-//! NIMVORO — лаунчер набора утилит.
+//! NIMVORO: launcher for the NIMVORO utility suite.
 //!
-//! - `catalog`  — что можно установить (catalog.json → nimvoro.json → GitHub Releases);
-//! - `install`  — установка, обновление и удаление;
-//! - `store`    — настройки и список установленного.
+//! - `catalog`   - what can be installed (catalog.json -> nimvoro.json -> GitHub Releases);
+//! - `install`   - install, update and uninstall;
+//! - `shortcuts` - Start-menu and desktop `.lnk` files;
+//! - `store`     - settings and the list of installed tools.
+//!
+//! Errors returned to the UI are codes (`E_...[:arg|arg]`); the frontend translates them (`src/i18n.ts`).
 
 mod catalog;
 mod install;
+mod shortcuts;
 mod store;
 
-use catalog::{Release, Tool};
+use catalog::Release;
+pub use catalog::Tool;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -18,16 +23,17 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
-pub use install::{running_in, safe_relative};
+pub use install::{running_in, safe_relative, write_marker};
+pub use shortcuts::{create as create_shortcut, start_menu_lnk};
 
 #[derive(Default)]
 struct AppState {
     settings: Mutex<Settings>,
     installed: Mutex<HashMap<String, Installed>>,
     tools: Mutex<Vec<Tool>>,
-    /// Инструменты, которые сейчас ставятся или удаляются.
+    /// Tools that are being installed or removed right now.
     busy: Mutex<HashSet<String>>,
-    /// `--update <id>` из командной строки при запуске: фронтенд заберёт его, когда загрузит каталог.
+    /// `--update <id>` from the command line at startup: the frontend picks it up once the catalog is loaded.
     pending_update: Mutex<Option<String>>,
 }
 
@@ -37,7 +43,7 @@ struct ToolView {
     #[serde(flatten)]
     tool: Tool,
     installed: Option<Installed>,
-    /// Папка, куда инструмент встанет (или уже стоит).
+    /// Folder the tool will be installed into (or is installed in).
     target_dir: String,
     update_available: bool,
     busy: bool,
@@ -52,7 +58,7 @@ struct View {
     data_dir: String,
 }
 
-/// `true`, если `candidate` новее `current` (semver без pre-release).
+/// `true` if `candidate` is newer than `current` (semver without pre-release).
 pub fn is_newer(candidate: &str, current: &str) -> bool {
     let parse = |v: &str| -> Vec<u64> {
         v.trim()
@@ -78,11 +84,13 @@ fn view(st: &AppState) -> View {
     let settings = st.settings.lock().unwrap().clone();
     let installed = st.installed.lock().unwrap().clone();
     let busy = st.busy.lock().unwrap().clone();
+    // Only tools that are in the catalog get a card; records of retired tools (e.g. "transluent") stay on disk but are not shown.
     let tools = st
         .tools
         .lock()
         .unwrap()
         .iter()
+        .filter(|t| !catalog::RETIRED_IDS.contains(&t.id.as_str()))
         .map(|t| {
             let inst = installed.get(&t.id).cloned();
             let update_available = match (&inst, &t.release) {
@@ -105,14 +113,14 @@ fn view(st: &AppState) -> View {
 }
 
 fn find_tool(st: &AppState, id: &str) -> Result<Tool, String> {
-    st.tools.lock().unwrap().iter().find(|t| t.id == id).cloned().ok_or_else(|| format!("инструмент {id} не найден в каталоге"))
+    st.tools.lock().unwrap().iter().find(|t| t.id == id).cloned().ok_or_else(|| format!("E_TOOL_NOT_FOUND:{id}"))
 }
 
 fn installed_of(st: &AppState, id: &str) -> Result<Installed, String> {
-    st.installed.lock().unwrap().get(id).cloned().ok_or_else(|| "инструмент не установлен".into())
+    st.installed.lock().unwrap().get(id).cloned().ok_or_else(|| "E_NOT_INSTALLED".into())
 }
 
-/// Снимает отметку «занят» при любом выходе из команды.
+/// Clears the "busy" mark on any exit from the command.
 struct BusyGuard<'a>(&'a AppState, String);
 impl Drop for BusyGuard<'_> {
     fn drop(&mut self) {
@@ -122,34 +130,92 @@ impl Drop for BusyGuard<'_> {
 
 fn mark_busy<'a>(st: &'a AppState, id: &str) -> Result<BusyGuard<'a>, String> {
     if !st.busy.lock().unwrap().insert(id.to_string()) {
-        return Err("этот инструмент уже устанавливается".into());
+        return Err("E_BUSY".into());
     }
     Ok(BusyGuard(st, id.to_string()))
 }
 
-// ───────────────────────── команды ─────────────────────────
+// ───────────────────────── commands ─────────────────────────
 
 #[tauri::command]
 fn get_view(st: State<'_, AppState>) -> View {
     view(&st)
 }
 
-/// Загрузить каталог. `refresh = true` — сходить в GitHub за свежими версиями.
+/// Loads the catalog. `refresh = true` goes to GitHub for fresh versions.
 #[tauri::command]
 async fn load_catalog(refresh: bool, st: State<'_, AppState>) -> Result<View, String> {
     let tools = catalog::load(refresh).await;
     *st.tools.lock().unwrap() = tools;
     *st.installed.lock().unwrap() = store::load_installed();
+    restore_shortcuts(&st).await;
     Ok(view(&st))
 }
 
+/// Creates Start-menu shortcuts that are missing for installed tools (also for tools installed by 1.0.0).
+async fn restore_shortcuts(st: &AppState) {
+    let tools = st.tools.lock().unwrap().clone();
+    let installed = st.installed.lock().unwrap().clone();
+    let updated = tokio::task::spawn_blocking(move || {
+        let mut updated = installed.clone();
+        let mut changed = false;
+        for t in &tools {
+            let Some(inst) = installed.get(&t.id) else { continue };
+            let list = shortcuts::ensure(&t.name(), inst, false, &inst.shortcuts);
+            if list != inst.shortcuts {
+                if let Some(u) = updated.get_mut(&t.id) {
+                    u.shortcuts = list;
+                }
+                changed = true;
+            }
+        }
+        changed.then_some(updated)
+    })
+    .await
+    .ok()
+    .flatten();
+    if let Some(map) = updated {
+        // Merge by id so a concurrent install is not lost.
+        let mut cur = st.installed.lock().unwrap();
+        for (id, inst) in map {
+            if let Some(c) = cur.get_mut(&id) {
+                c.shortcuts = inst.shortcuts;
+            }
+        }
+        let _ = store::save_installed(&cur);
+    }
+}
+
+/// `dest` is the exact folder chosen in the install dialog (first install only); `desktop_shortcut` is its checkbox.
 #[tauri::command]
-async fn install_tool(id: String, close_running: bool, on_progress: Channel<install::Progress>, st: State<'_, AppState>) -> Result<View, String> {
+async fn install_tool(
+    id: String,
+    close_running: bool,
+    dest: Option<String>,
+    desktop_shortcut: Option<bool>,
+    on_progress: Channel<install::Progress>,
+    st: State<'_, AppState>,
+) -> Result<View, String> {
     let tool = find_tool(&st, &id)?;
     let _busy = mark_busy(&st, &id)?;
-    let settings = st.settings.lock().unwrap().clone();
     let prev = st.installed.lock().unwrap().get(&id).cloned();
-    let inst = install::install(&tool, &settings, prev.as_ref(), close_running, &on_progress).await?;
+    if prev.is_none() {
+        if let Some(flag) = desktop_shortcut {
+            let mut s = st.settings.lock().unwrap();
+            if s.desktop_shortcut != flag {
+                s.desktop_shortcut = flag;
+                let _ = store::save_settings(&s);
+            }
+        }
+    }
+    let settings = st.settings.lock().unwrap().clone();
+    let opts = install::InstallOpts {
+        dest: dest.filter(|d| !d.trim().is_empty()).map(PathBuf::from),
+        desktop_shortcut: desktop_shortcut.unwrap_or(settings.desktop_shortcut),
+        close_running,
+        language: settings.language.clone(),
+    };
+    let inst = install::install(&tool, &settings, prev.as_ref(), opts, &on_progress).await?;
     {
         let mut map = st.installed.lock().unwrap();
         map.insert(id, inst);
@@ -162,8 +228,9 @@ async fn install_tool(id: String, close_running: bool, on_progress: Channel<inst
 #[tauri::command]
 async fn uninstall_tool(id: String, close_running: bool, st: State<'_, AppState>) -> Result<View, String> {
     let inst = installed_of(&st, &id)?;
+    let name = find_tool(&st, &id).map(|t| t.name()).unwrap_or_else(|_| id.clone());
     let _busy = mark_busy(&st, &id)?;
-    install::uninstall(&inst, close_running).await?;
+    install::uninstall(&inst, &name, close_running).await?;
     {
         let mut map = st.installed.lock().unwrap();
         map.remove(&id);
@@ -173,7 +240,7 @@ async fn uninstall_tool(id: String, close_running: bool, st: State<'_, AppState>
     Ok(view(&st))
 }
 
-/// Запуск через оболочку Windows: так срабатывает запрос прав администратора у утилит, которым он нужен.
+/// Launches through the Windows shell so tools that need administrator rights get their UAC prompt.
 #[tauri::command]
 fn launch_tool(id: String, app: AppHandle, st: State<'_, AppState>) -> Result<(), String> {
     let inst = installed_of(&st, &id)?;
@@ -197,31 +264,16 @@ fn open_path(path: String, app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 fn open_url(url: String, app: AppHandle) -> Result<(), String> {
     if !url.starts_with("https://") {
-        return Err("открываются только https-ссылки".into());
+        return Err("E_HTTPS_ONLY".into());
     }
     app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn save_settings(settings: Settings, st: State<'_, AppState>) -> Result<View, String> {
+    let settings = settings.sanitized();
     store::save_settings(&settings).map_err(|e| e.to_string())?;
     *st.settings.lock().unwrap() = settings;
-    Ok(view(&st))
-}
-
-/// Своя папка для инструмента (`None` — вернуть общую). Только пока он не установлен.
-#[tauri::command]
-fn set_tool_dir(id: String, dir: Option<String>, st: State<'_, AppState>) -> Result<View, String> {
-    if st.installed.lock().unwrap().contains_key(&id) {
-        return Err("папку можно сменить только до установки".into());
-    }
-    let mut s = st.settings.lock().unwrap().clone();
-    match dir.filter(|d| !d.trim().is_empty()) {
-        Some(d) => s.tool_dirs.insert(id, d),
-        None => s.tool_dirs.remove(&id),
-    };
-    store::save_settings(&s).map_err(|e| e.to_string())?;
-    *st.settings.lock().unwrap() = s;
     Ok(view(&st))
 }
 
@@ -230,17 +282,17 @@ fn take_pending_update(st: State<'_, AppState>) -> Option<String> {
     st.pending_update.lock().unwrap().take()
 }
 
-/// Новая версия самого лаунчера, если есть.
+/// New version of the launcher itself, if any.
 #[tauri::command]
 async fn launcher_update_check() -> Result<Option<Release>, String> {
     let rel = catalog::latest_release(&catalog::client(), catalog::LAUNCHER_REPO, Some("*-setup.exe")).await?;
     Ok((is_newer(&rel.version, env!("CARGO_PKG_VERSION")) && rel.asset_url.is_some()).then_some(rel))
 }
 
-/// Скачивает установщик новой версии, запускает его и закрывает лаунчер.
+/// Downloads the new installer, runs it and closes the launcher.
 #[tauri::command]
 async fn launcher_update_apply(on_progress: Channel<install::Progress>, app: AppHandle) -> Result<(), String> {
-    let rel = launcher_update_check().await?.ok_or("обновлений нет")?;
+    let rel = launcher_update_check().await?.ok_or("E_NO_UPDATE")?;
     let tool = Tool {
         id: "nimvoro".into(),
         repo: catalog::LAUNCHER_REPO.into(),
@@ -269,7 +321,7 @@ pub fn run() {
         ..Default::default()
     };
     tauri::Builder::default()
-        // Второй запуск (в том числе `NIMVORO.exe --update <id>` из утилиты) передаётся уже открытому окну.
+        // A second launch (including `NIMVORO.exe --update <id>` from a tool) is forwarded to the already open window.
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.unminimize();
@@ -297,7 +349,6 @@ pub fn run() {
             open_path,
             open_url,
             save_settings,
-            set_tool_dir,
             take_pending_update,
             launcher_update_check,
             launcher_update_apply,

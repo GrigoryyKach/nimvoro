@@ -1,4 +1,4 @@
-// Выпадающее меню «…» у карточки.
+// Dropdown "..." menu on a card.
 import { h, svg } from '../dom';
 
 export interface MenuItem {

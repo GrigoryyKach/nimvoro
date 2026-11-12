@@ -1,4 +1,4 @@
-// Типизированные вызовы бэкенда (src-tauri/src/lib.rs). Поля — camelCase, как отдаёт serde.
+// Typed backend calls (src-tauri/src/lib.rs). Fields are camelCase, as serde returns them.
 import { Channel, invoke } from '@tauri-apps/api/core';
 
 export interface Feature {
@@ -6,7 +6,17 @@ export interface Feature {
   text: string;
 }
 
-/** nimvoro.json из репозитория инструмента (см. docs/ADDING_A_TOOL.md). */
+/** Translatable manifest fields (`manifest.i18n.<lang>`). */
+export interface ManifestText {
+  name?: string;
+  tagline?: string;
+  description?: string;
+  category?: string;
+  features?: Feature[];
+  requirements?: string[];
+}
+
+/** nimvoro.json from the tool's repository (see docs/ADDING_A_TOOL.md). */
 export interface Manifest {
   schema: number;
   id: string;
@@ -22,6 +32,7 @@ export interface Manifest {
   asset: string;
   requirements?: string[];
   settingsDir?: string;
+  i18n?: Partial<Record<'ru' | 'uk', ManifestText>>;
 }
 
 export interface Release {
@@ -42,6 +53,7 @@ export interface Installed {
   installedAt: number;
   files: string[];
   size: number;
+  shortcuts: string[];
 }
 
 export interface Tool {
@@ -63,6 +75,8 @@ export interface Settings {
   autoInstallUpdates: boolean;
   checkLauncherUpdates: boolean;
   theme: 'system' | 'light' | 'dark';
+  language: 'en' | 'ru' | 'uk';
+  desktopShortcut: boolean;
   view: 'grid' | 'list';
   sort: 'name' | 'updated' | 'size';
 }
@@ -80,7 +94,7 @@ export type Progress =
   | { stage: 'extract' }
   | { stage: 'done'; version: string };
 
-/** Ошибка «программа запущена» — бэкенд отдаёт её строкой с этим префиксом. */
+/** "Program is running" error: the backend returns it as a string with this prefix. */
 export const RUNNING_PREFIX = 'RUNNING:';
 
 function channel(onProgress: (p: Progress) => void): Channel<Progress> {
@@ -92,15 +106,15 @@ function channel(onProgress: (p: Progress) => void): Channel<Progress> {
 export const api = {
   getView: () => invoke<View>('get_view'),
   loadCatalog: (refresh: boolean) => invoke<View>('load_catalog', { refresh }),
-  install: (id: string, closeRunning: boolean, onProgress: (p: Progress) => void) =>
-    invoke<View>('install_tool', { id, closeRunning, onProgress: channel(onProgress) }),
+  /** `dest` and `desktopShortcut` come from the install dialog (first install only). */
+  install: (id: string, closeRunning: boolean, onProgress: (p: Progress) => void, dest?: string, desktopShortcut?: boolean) =>
+    invoke<View>('install_tool', { id, closeRunning, dest: dest ?? null, desktopShortcut: desktopShortcut ?? null, onProgress: channel(onProgress) }),
   uninstall: (id: string, closeRunning: boolean) => invoke<View>('uninstall_tool', { id, closeRunning }),
   launch: (id: string) => invoke<void>('launch_tool', { id }),
   openToolDir: (id: string) => invoke<void>('open_tool_dir', { id }),
   openPath: (path: string) => invoke<void>('open_path', { path }),
   openUrl: (url: string) => invoke<void>('open_url', { url }),
   saveSettings: (settings: Settings) => invoke<View>('save_settings', { settings }),
-  setToolDir: (id: string, dir: string | null) => invoke<View>('set_tool_dir', { id, dir }),
   takePendingUpdate: () => invoke<string | null>('take_pending_update'),
   launcherUpdateCheck: () => invoke<Release | null>('launcher_update_check'),
   launcherUpdateApply: (onProgress: (p: Progress) => void) =>

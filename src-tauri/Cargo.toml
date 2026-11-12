@@ -1,14 +1,14 @@
 [package]
 name = "nimvoro"
-version = "1.0.0"
-description = "NIMVORO — лаунчер набора утилит"
+version = "1.1.0"
+description = "NIMVORO: launcher for the NIMVORO utility suite"
 edition = "2021"
 
 [lib]
 name = "nimvoro_lib"
-# Только десктоп: cdylib нужен для мобильных сборок и ломает линковку на GNU-тулчейне.
+# Desktop only: cdylib is needed for mobile builds and breaks linking on the GNU toolchain.
 crate-type = ["rlib"]
-# Тесты — в tests/logic.rs: только туда tauri-build может подложить манифест Windows.
+# Tests live in tests/logic.rs: only there can tauri-build inject the Windows manifest.
 test = false
 doctest = false
 
@@ -31,6 +31,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
 thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["fs", "rt", "sync", "time", "macros"] }
+windows = { version = "0.62", features = ["Win32_System_Com", "Win32_UI_Shell"] }
 zip = { version = "9.5.0", default-features = false, features = ["deflate"] }
 
 [profile.release]

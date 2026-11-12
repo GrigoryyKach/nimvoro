@@ -1,7 +1,7 @@
 name: Release
 
-# Собирает установщик NIMVORO (NSIS) и публикует GitHub Release при пуше тега vX.Y.Z.
-# Лаунчер сам находит в релизе файл *-setup.exe и предлагает обновиться.
+# Builds the NIMVORO installer (NSIS) and publishes a GitHub Release when a vX.Y.Z tag is pushed.
+# The launcher finds the *-setup.exe asset in the release and offers to update.
 on:
   push:
     tags: ["v*"]
@@ -16,14 +16,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Версии совпадают с тегом
+      - name: Versions match the tag
         shell: pwsh
         run: |
           $pkg = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $conf = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
           $cargo = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version\s*=\s*"(.+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
-          if ($pkg -ne $conf -or $pkg -ne $cargo) { throw "Версии расходятся: package.json $pkg, tauri.conf.json $conf, Cargo.toml $cargo" }
-          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -ne "v$pkg") { throw "Тег ${{ github.ref_name }} не совпадает с версией $pkg" }
+          if ($pkg -ne $conf -or $pkg -ne $cargo) { throw "Version mismatch: package.json $pkg, tauri.conf.json $conf, Cargo.toml $cargo" }
+          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -ne "v$pkg") { throw "Tag ${{ github.ref_name }} does not match version $pkg" }
 
       - uses: actions/setup-node@v4
         with:
@@ -38,10 +38,10 @@ jobs:
 
       - run: npm ci
 
-      - name: Проверка типов и сборка интерфейса
+      - name: Type check and build the UI
         run: npm run build
 
-      - name: Тесты
+      - name: Tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
       - uses: tauri-apps/tauri-action@v0
@@ -50,6 +50,6 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: NIMVORO ${{ github.ref_name }}
-          releaseBody: Установщик для Windows — файл *-setup.exe ниже. Уже установленный NIMVORO предложит обновиться сам.
+          releaseBody: Windows installer is the *-setup.exe file below. An installed NIMVORO offers the update by itself.
           releaseDraft: false
           prerelease: false
