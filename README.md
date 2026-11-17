@@ -91,3 +91,7 @@ git tag v1.1.1 && git push --tags
 ```
 
 GitHub Actions builds the installer and publishes the release. Installed launchers offer the update.
+
+## Support
+
+If you find NIMVORO useful, you can support its development: https://donatello.to/MicsGame

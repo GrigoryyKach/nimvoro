@@ -6,6 +6,7 @@ import { h, svg } from '../dom';
 import { LANGS, errorText, t as tr, tn } from '../i18n';
 import { icons } from '../icons';
 import { setView, state, subscribe } from '../store';
+import { supportSection } from './support';
 import { checkLauncherUpdate } from './launcher-update';
 import { modalHeader, openModal } from './dialog';
 import { toast } from './toast';
@@ -96,6 +97,7 @@ export function openSettings(): void {
             langSelect,
           ),
         ),
+        ...supportSection(),
         h('h3', { class: 'caps' }, tr('settings.about')),
         h('div', { class: 'set-card' },
           h('div', { class: 'set-row' },
