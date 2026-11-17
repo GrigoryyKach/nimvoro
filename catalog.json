@@ -4,5 +4,6 @@
   { "id": "smart-switcher", "repo": "GrigoryyKach/smart-switcher" },
   { "id": "sidekick", "repo": "GrigoryyKach/sidekick" },
   { "id": "fps-overlay", "repo": "GrigoryyKach/fps-overlay" },
-  { "id": "snapper", "repo": "GrigoryyKach/snapper" }
+  { "id": "snapper", "repo": "GrigoryyKach/snapper" },
+  { "id": "dice-roller", "repo": "GrigoryyKach/dice-roller" }
 ]
