@@ -13,7 +13,8 @@ export interface ManifestText {
   description?: string;
   category?: string;
   features?: Feature[];
-  requirements?: string[];
+  requirements?: string | string[];
+  linux?: { requirements?: string | string[] };
 }
 
 /** nimvoro.json from the tool's repository (see docs/ADDING_A_TOOL.md). */
@@ -30,7 +31,11 @@ export interface Manifest {
   screenshots?: string[];
   exe: string;
   asset: string;
-  requirements?: string[];
+  requirements?: string | string[];
+  /** Missing means `['windows']`. */
+  platforms?: string[];
+  /** Linux build: `asset`, `exe`, `requirements` (the top-level ones are the Windows build). */
+  linux?: { asset?: string; exe?: string; requirements?: string | string[] };
   settingsDir?: string;
   i18n?: Partial<Record<'ru' | 'uk', ManifestText>>;
 }
@@ -45,6 +50,9 @@ export interface Release {
   assetSize: number;
   digest: string | null;
 }
+
+/** The launcher's own update: `installer` (Windows), `appimage` (replaced in place) or `page` (open the release page). */
+export type LauncherUpdate = Release & { mode: 'installer' | 'appimage' | 'page' };
 
 export interface Installed {
   version: string;
@@ -86,6 +94,8 @@ export interface View {
   settings: Settings;
   launcherVersion: string;
   dataDir: string;
+  platform: 'windows' | 'linux';
+  rawBase: string;
 }
 
 export type Progress =
@@ -116,11 +126,18 @@ export const api = {
   openUrl: (url: string) => invoke<void>('open_url', { url }),
   saveSettings: (settings: Settings) => invoke<View>('save_settings', { settings }),
   takePendingUpdate: () => invoke<string | null>('take_pending_update'),
-  launcherUpdateCheck: () => invoke<Release | null>('launcher_update_check'),
+  launcherUpdateCheck: () => invoke<LauncherUpdate | null>('launcher_update_check'),
   launcherUpdateApply: (onProgress: (p: Progress) => void) =>
     invoke<void>('launcher_update_apply', { onProgress: channel(onProgress) }),
 };
 
+/** Where icons and screenshots come from: GitHub raw, or a local mirror when the backend runs in test mode. */
+let rawBase = 'https://raw.githubusercontent.com';
+
+export function setRawBase(base: string): void {
+  rawBase = base.replace(/\/+$/, '');
+}
+
 export function rawUrl(repo: string, path: string): string {
-  return `https://raw.githubusercontent.com/${repo}/main/${path.replace(/^\/+/, '')}`;
+  return `${rawBase}/${repo}/main/${path.replace(/^\/+/, '')}`;
 }

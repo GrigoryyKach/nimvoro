@@ -58,13 +58,14 @@ src/                       UI
 src-tauri/src/
   catalog.rs               catalog.json -> nimvoro.json -> latest GitHub Release, cache for offline use
   install.rs               download, SHA-256, extraction without "../", closing a running program, language marker
-  shortcuts.rs             Start-menu and desktop .lnk files through the shell COM API
-  store.rs                 settings and installed list in %APPDATA%\NIMVORO
+  shortcuts.rs             Start-menu and desktop .lnk files through the shell COM API (Windows); .desktop entries (Linux)
+  platform.rs              Windows/Linux differences without system access: manifest fields, self-update mode, .desktop text, clean child environment
+  store.rs                 settings and installed list in %APPDATA%\NIMVORO (Linux: ~/.config/NIMVORO)
   lib.rs                   commands, single instance, --update <id>
 ```
 
-Launcher data lives in `%APPDATA%\NIMVORO\` (`settings.json`, `installed.json`, `cache.json`, `launcher.json`: the launcher path for the tools).
-Programs are installed into `%LOCALAPPDATA%\NIMVORO\Apps\<Name>` by default.
+Launcher data lives in `%APPDATA%\NIMVORO\` (Linux: `~/.config/NIMVORO/`): `settings.json`, `installed.json`, `cache.json`, `launcher.json` (the launcher path for the tools).
+Programs are installed into `%LOCALAPPDATA%\NIMVORO\Apps\<Name>` by default (Linux: `~/.local/share/nimvoro/apps/<id>`).
 
 Errors from the Rust side reach the UI as codes (`E_...`) that `src/i18n.ts` translates, so every message follows the chosen language.
 
@@ -75,12 +76,16 @@ npm install
 npm run tauri dev
 ```
 
-Node.js 22+ and Rust are required. Releases are built on MSVC in GitHub Actions. Locally the GNU toolchain (MinGW) works too:
+Node.js 22+ and Rust are required (on Linux also `libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libxdo-dev patchelf`). Releases are built on MSVC (Windows) and `ubuntu-22.04` (Linux) in GitHub Actions. Locally the GNU toolchain (MinGW) works too:
 `build.rs` removes the manifest conflict, and `WebView2Loader.dll` must sit next to the exe (cargo puts it into `target/`).
 
 Tests: `cargo test --manifest-path src-tauri/Cargo.toml`.
 
 To try installs without touching your real data, set `NIMVORO_DATA_DIR`, `NIMVORO_START_MENU_DIR` and `NIMVORO_DESKTOP_DIR` to throwaway folders before `npm run tauri dev`.
+
+### Linux checks in Docker
+
+No Linux machine is needed. [`docker/`](docker/README.md) builds the deb and the AppImage in `ubuntu:22.04` (the CI baseline), runs the tests, and then drives the AppImage under Xvfb against a local mirror of GitHub (`NIMVORO_TEST_BASE_URL`, see [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md#testing-the-launcher)): catalog filtering, install, `.desktop` entries, update, uninstall and the launcher self-update. Wayland-specific behaviour cannot be tested this way.
 
 ## Release
 
@@ -90,7 +95,7 @@ Bump the version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/C
 git tag v1.1.1 && git push --tags
 ```
 
-GitHub Actions builds the installer and publishes the release. Installed launchers offer the update.
+GitHub Actions builds the Windows installer and, in a second job, the Linux AppImage and deb, and publishes one release. Installed launchers offer the update.
 
 ## Support
 

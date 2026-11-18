@@ -37,6 +37,8 @@ const en = {
   'banner.updateTo': 'Update to {v}',
   'banner.downloading': 'Downloading {p}%',
   'banner.launching': 'Starting installer…',
+  'banner.openPage': 'Open release page',
+  'banner.restarting': 'Restarting…',
   'toast.updatesAvailable.one': '{n} update available',
   'toast.updatesAvailable.other': '{n} updates available',
   'toast.upToDate': 'Everything is up to date',
@@ -116,6 +118,7 @@ const en = {
   'install.pick': 'Where to install {name}',
   'install.desktop': 'Create a desktop shortcut',
   'install.startMenu': 'A Start menu shortcut is always created.',
+  'install.startMenu.linux': 'An application menu entry is always created.',
   'install.confirm': 'Install',
   'settings.title': 'Settings',
   'settings.install': 'Installation',
@@ -158,7 +161,7 @@ const en = {
   'err.E_PROCESS_LIST': 'Could not get the list of running processes',
   'err.E_CLOSE_FAILED': 'Could not close the running program',
   'err.E_NO_RELEASE': 'The tool has no release yet',
-  'err.E_NO_ASSET': 'The release has no Windows archive',
+  'err.E_NO_ASSET': 'The release has no archive for this system',
   'err.E_DOWNLOAD': 'Download failed: {0}',
   'err.E_GITHUB_STATUS': 'GitHub responded with {0}',
   'err.E_TEMP_FILE': 'Temporary file: {0}',
@@ -170,7 +173,8 @@ const en = {
   'err.E_FILE_IO': '{0}: {1}',
   'err.E_EXE_MISSING': '{0} was not found after extraction',
   'err.E_UNINSTALL_LEFT': 'Could not remove the files: the program may still be running',
-  'err.E_BAD_DIR': 'Choose a full folder path, for example C:\\Tools\\Name',
+  'err.E_BAD_DIR': 'Choose a full folder path, for example {ex}',
+  'err.E_LAUNCH': 'Could not start the program: {0}',
   'err.E_NETWORK': 'Cannot reach GitHub: {0}',
   'err.E_NO_RELEASES': 'No releases yet',
   'err.E_RATE_LIMIT': 'GitHub has temporarily limited requests, please try again later',
@@ -209,6 +213,8 @@ const ru: Dict = {
   'banner.updateTo': 'Обновить до {v}',
   'banner.downloading': 'Загрузка {p}%',
   'banner.launching': 'Запуск установщика…',
+  'banner.openPage': 'Открыть страницу релиза',
+  'banner.restarting': 'Перезапуск…',
   'toast.updatesAvailable.one': 'Доступно обновлений: {n}',
   'toast.updatesAvailable.other': 'Доступно обновлений: {n}',
   'toast.upToDate': 'Всё обновлено',
@@ -288,6 +294,7 @@ const ru: Dict = {
   'install.pick': 'Куда установить {name}',
   'install.desktop': 'Создать ярлык на рабочем столе',
   'install.startMenu': 'Ярлык в меню «Пуск» создаётся всегда.',
+  'install.startMenu.linux': 'Запись в меню приложений создаётся всегда.',
   'install.confirm': 'Установить',
   'settings.title': 'Настройки',
   'settings.install': 'Установка',
@@ -330,7 +337,7 @@ const ru: Dict = {
   'err.E_PROCESS_LIST': 'Не удалось получить список процессов',
   'err.E_CLOSE_FAILED': 'Не удалось закрыть запущенную программу',
   'err.E_NO_RELEASE': 'У инструмента ещё нет релиза',
-  'err.E_NO_ASSET': 'В релизе нет архива для Windows',
+  'err.E_NO_ASSET': 'В релизе нет архива для этой системы',
   'err.E_DOWNLOAD': 'Ошибка загрузки: {0}',
   'err.E_GITHUB_STATUS': 'GitHub ответил {0}',
   'err.E_TEMP_FILE': 'Временный файл: {0}',
@@ -342,7 +349,8 @@ const ru: Dict = {
   'err.E_FILE_IO': '{0}: {1}',
   'err.E_EXE_MISSING': 'После распаковки не найден {0}',
   'err.E_UNINSTALL_LEFT': 'Не удалось удалить файлы: возможно, программа ещё запущена',
-  'err.E_BAD_DIR': 'Укажите полный путь к папке, например C:\\Tools\\Name',
+  'err.E_BAD_DIR': 'Укажите полный путь к папке, например {ex}',
+  'err.E_LAUNCH': 'Не удалось запустить программу: {0}',
   'err.E_NETWORK': 'Нет связи с GitHub: {0}',
   'err.E_NO_RELEASES': 'Релизов пока нет',
   'err.E_RATE_LIMIT': 'GitHub временно ограничил запросы, попробуйте позже',
@@ -379,6 +387,8 @@ const uk: Dict = {
   'banner.updateTo': 'Оновити до {v}',
   'banner.downloading': 'Завантаження {p}%',
   'banner.launching': 'Запуск інсталятора…',
+  'banner.openPage': 'Відкрити сторінку релізу',
+  'banner.restarting': 'Перезапуск…',
   'toast.updatesAvailable.one': 'Доступно оновлень: {n}',
   'toast.updatesAvailable.other': 'Доступно оновлень: {n}',
   'toast.upToDate': 'Усе оновлено',
@@ -458,6 +468,7 @@ const uk: Dict = {
   'install.pick': 'Куди встановити {name}',
   'install.desktop': 'Створити ярлик на робочому столі',
   'install.startMenu': 'Ярлик у меню «Пуск» створюється завжди.',
+  'install.startMenu.linux': 'Запис у меню застосунків створюється завжди.',
   'install.confirm': 'Встановити',
   'settings.title': 'Налаштування',
   'settings.install': 'Встановлення',
@@ -500,7 +511,7 @@ const uk: Dict = {
   'err.E_PROCESS_LIST': 'Не вдалося отримати список процесів',
   'err.E_CLOSE_FAILED': 'Не вдалося закрити запущену програму',
   'err.E_NO_RELEASE': 'В інструмента ще немає релізу',
-  'err.E_NO_ASSET': 'У релізі немає архіву для Windows',
+  'err.E_NO_ASSET': 'У релізі немає архіву для цієї системи',
   'err.E_DOWNLOAD': 'Помилка завантаження: {0}',
   'err.E_GITHUB_STATUS': 'GitHub відповів {0}',
   'err.E_TEMP_FILE': 'Тимчасовий файл: {0}',
@@ -512,7 +523,8 @@ const uk: Dict = {
   'err.E_FILE_IO': '{0}: {1}',
   'err.E_EXE_MISSING': 'Після розпакування не знайдено {0}',
   'err.E_UNINSTALL_LEFT': 'Не вдалося видалити файли: можливо, програму ще запущено',
-  'err.E_BAD_DIR': 'Вкажіть повний шлях до теки, наприклад C:\\Tools\\Name',
+  'err.E_BAD_DIR': 'Вкажіть повний шлях до теки, наприклад {ex}',
+  'err.E_LAUNCH': 'Не вдалося запустити програму: {0}',
   'err.E_NETWORK': 'Немає зв’язку з GitHub: {0}',
   'err.E_NO_RELEASES': 'Релізів поки немає',
   'err.E_RATE_LIMIT': 'GitHub тимчасово обмежив запити, спробуйте пізніше',
@@ -532,6 +544,17 @@ export function setLang(l: string | undefined): void {
 
 export function getLang(): Lang {
   return lang;
+}
+
+/** `windows` or `linux`; set from the backend view. Only used to pick platform-specific wording. */
+let platformName = 'windows';
+
+export function setPlatform(p: string): void {
+  platformName = p;
+}
+
+export function isLinux(): boolean {
+  return platformName === 'linux';
 }
 
 export function locale(): string {
@@ -565,6 +588,7 @@ export function translateCode(raw: string | null | undefined): string {
   const args = (m[2] ?? '').split('|');
   const params: Record<string, string> = {};
   args.forEach((a, i) => (params[String(i)] = a));
+  params.ex = isLinux() ? '/home/user/tools' : 'C:\\Tools\\Name';
   const key = `err.${m[1]}`;
   return key in en ? t(key, params) : raw;
 }

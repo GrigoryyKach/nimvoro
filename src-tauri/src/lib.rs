@@ -2,13 +2,15 @@
 //!
 //! - `catalog`   - what can be installed (catalog.json -> nimvoro.json -> GitHub Releases);
 //! - `install`   - install, update and uninstall;
-//! - `shortcuts` - Start-menu and desktop `.lnk` files;
+//! - `shortcuts` - Start-menu / desktop `.lnk` files (Windows) and `.desktop` entries (Linux);
+//! - `platform`  - Windows/Linux differences that need no system access (manifest fields, self-update mode, `.desktop` text);
 //! - `store`     - settings and the list of installed tools.
 //!
 //! Errors returned to the UI are codes (`E_...[:arg|arg]`); the frontend translates them (`src/i18n.ts`).
 
 mod catalog;
 mod install;
+pub mod platform;
 mod shortcuts;
 mod store;
 
@@ -16,6 +18,8 @@ use catalog::Release;
 pub use catalog::Tool;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
+#[cfg(unix)]
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use store::{Installed, Settings};
@@ -23,7 +27,7 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
-pub use install::{running_in, safe_relative, write_marker};
+pub use install::{extract, running_in, safe_relative, write_marker};
 pub use shortcuts::{create as create_shortcut, start_menu_lnk};
 
 #[derive(Default)]
@@ -56,6 +60,19 @@ struct View {
     settings: Settings,
     launcher_version: String,
     data_dir: String,
+    /// `windows` or `linux`.
+    platform: String,
+    /// Where icons and screenshots are loaded from (GitHub raw, or the local mirror in tests).
+    raw_base: String,
+}
+
+/// Answer of the launcher update check.
+#[derive(Serialize)]
+struct LauncherUpdate {
+    #[serde(flatten)]
+    release: Release,
+    /// `installer` (Windows), `appimage` (replace in place) or `page` (only open the release page).
+    mode: &'static str,
 }
 
 /// `true` if `candidate` is newer than `current` (semver without pre-release).
@@ -91,6 +108,8 @@ fn view(st: &AppState) -> View {
         .unwrap()
         .iter()
         .filter(|t| !catalog::RETIRED_IDS.contains(&t.id.as_str()))
+        // Tools without support for this platform are not shown at all.
+        .filter(|t| platform::supports(&t.manifest, platform::OS))
         .map(|t| {
             let inst = installed.get(&t.id).cloned();
             let update_available = match (&inst, &t.release) {
@@ -109,6 +128,8 @@ fn view(st: &AppState) -> View {
         settings,
         launcher_version: env!("CARGO_PKG_VERSION").into(),
         data_dir: store::data_dir().display().to_string(),
+        platform: platform::OS.into(),
+        raw_base: catalog::raw_base(),
     }
 }
 
@@ -161,7 +182,7 @@ async fn restore_shortcuts(st: &AppState) {
         let mut changed = false;
         for t in &tools {
             let Some(inst) = installed.get(&t.id) else { continue };
-            let list = shortcuts::ensure(&t.name(), inst, false, &inst.shortcuts);
+            let list = shortcuts::ensure(&t.id, &t.name(), inst, false, &inst.shortcuts);
             if list != inst.shortcuts {
                 if let Some(u) = updated.get_mut(&t.id) {
                     u.shortcuts = list;
@@ -230,7 +251,7 @@ async fn uninstall_tool(id: String, close_running: bool, st: State<'_, AppState>
     let inst = installed_of(&st, &id)?;
     let name = find_tool(&st, &id).map(|t| t.name()).unwrap_or_else(|_| id.clone());
     let _busy = mark_busy(&st, &id)?;
-    install::uninstall(&inst, &name, close_running).await?;
+    install::uninstall(&inst, &id, &name, close_running).await?;
     {
         let mut map = st.installed.lock().unwrap();
         map.remove(&id);
@@ -240,18 +261,32 @@ async fn uninstall_tool(id: String, close_running: bool, st: State<'_, AppState>
     Ok(view(&st))
 }
 
-/// Launches through the Windows shell so tools that need administrator rights get their UAC prompt.
+/// Windows: launches through the shell so tools that need administrator rights get their UAC prompt.
+/// Linux: starts the binary directly, detached, without the launcher's AppImage environment.
 #[tauri::command]
 fn launch_tool(id: String, app: AppHandle, st: State<'_, AppState>) -> Result<(), String> {
     let inst = installed_of(&st, &id)?;
     let exe = PathBuf::from(&inst.dir).join(&inst.exe);
-    app.opener().open_path(exe.display().to_string(), None::<&str>).map_err(|e| e.to_string())
+    #[cfg(unix)]
+    {
+        let _ = &app;
+        platform::spawn_detached(&exe, &[], Path::new(&inst.dir)).map_err(|e| format!("E_LAUNCH:{e}"))
+    }
+    #[cfg(not(unix))]
+    {
+        app.opener().open_path(exe.display().to_string(), None::<&str>).map_err(|e| e.to_string())
+    }
 }
 
 #[tauri::command]
 fn open_tool_dir(id: String, app: AppHandle, st: State<'_, AppState>) -> Result<(), String> {
     let inst = installed_of(&st, &id)?;
-    app.opener().reveal_item_in_dir(PathBuf::from(&inst.dir).join(&inst.exe)).map_err(|e| e.to_string())
+    let exe = PathBuf::from(&inst.dir).join(&inst.exe);
+    // File managers on Linux may not implement "reveal"; opening the folder is the fallback.
+    app.opener()
+        .reveal_item_in_dir(&exe)
+        .or_else(|e| app.opener().open_path(inst.dir.clone(), None::<&str>).map_err(|_| e))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -282,17 +317,40 @@ fn take_pending_update(st: State<'_, AppState>) -> Option<String> {
     st.pending_update.lock().unwrap().take()
 }
 
-/// New version of the launcher itself, if any.
+/// New version of the launcher itself, if any, and how it can be applied on this system.
 #[tauri::command]
-async fn launcher_update_check() -> Result<Option<Release>, String> {
-    let rel = catalog::latest_release(&catalog::client(), catalog::LAUNCHER_REPO, Some("*-setup.exe")).await?;
-    Ok((is_newer(&rel.version, env!("CARGO_PKG_VERSION")) && rel.asset_url.is_some()).then_some(rel))
+async fn launcher_update_check() -> Result<Option<LauncherUpdate>, String> {
+    let rel = catalog::latest_release(&catalog::client(), catalog::LAUNCHER_REPO, Some(platform::launcher_asset())).await?;
+    let mode = platform::current_update_mode();
+    let newer = is_newer(&rel.version, env!("CARGO_PKG_VERSION")) && platform::update_possible(mode, rel.asset_url.is_some());
+    Ok(newer.then(|| LauncherUpdate { release: rel, mode: mode.as_str() }))
 }
 
-/// Downloads the new installer, runs it and closes the launcher.
+/// Windows: downloads the new installer, runs it and closes the launcher.
+/// Linux AppImage: downloads the new AppImage next to the current one, replaces it and starts it again.
+/// Linux without a writable AppImage: opens the release page.
 #[tauri::command]
 async fn launcher_update_apply(on_progress: Channel<install::Progress>, app: AppHandle) -> Result<(), String> {
-    let rel = launcher_update_check().await?.ok_or("E_NO_UPDATE")?;
+    let LauncherUpdate { release: rel, mode } = launcher_update_check().await?.ok_or("E_NO_UPDATE")?;
+    if mode == platform::UpdateMode::ReleasePage.as_str() {
+        return app.opener().open_url(rel.url, None::<&str>).map_err(|e| e.to_string());
+    }
+    #[cfg(unix)]
+    if mode == platform::UpdateMode::AppImage.as_str() {
+        let target = platform::appimage_path().ok_or("E_NO_UPDATE")?;
+        let new = target.with_file_name(format!(".{}.new", target.file_name().unwrap_or_default().to_string_lossy()));
+        install::download_asset(&rel, &new, &on_progress).await?;
+        platform::replace_executable(&new, &target).map_err(|e| format!("E_FILE_IO:{}|{e}", target.display()))?;
+        let _ = on_progress.send(install::Progress::Done { version: rel.version.clone() });
+        relaunch(&target);
+        app.exit(0);
+        // `exit` can leave the process hanging on some systems; the new instance is waiting for this one to go.
+        std::thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            std::process::exit(0);
+        });
+        return Ok(());
+    }
     let tool = Tool {
         id: "nimvoro".into(),
         repo: catalog::LAUNCHER_REPO.into(),
@@ -306,6 +364,21 @@ async fn launcher_update_apply(on_progress: Channel<install::Progress>, app: App
     app.opener().open_path(exe.display().to_string(), None::<&str>).map_err(|e| e.to_string())?;
     app.exit(0);
     Ok(())
+}
+
+/// Starts the launcher again after this process has exited (a running instance would swallow the new one: single instance).
+#[cfg(unix)]
+fn relaunch(path: &Path) {
+    use std::os::unix::process::CommandExt;
+    use std::process::{Command, Stdio};
+    let mut cmd = Command::new("sh");
+    // The current folder may be inside the AppImage mount, which disappears when this process exits.
+    cmd.current_dir(dirs::home_dir().unwrap_or_else(|| PathBuf::from("/")));
+    // Wait (at most 10 s) until this process is gone, then start the new file.
+    let script = "i=0; while kill -0 \"$1\" 2>/dev/null && [ $i -lt 50 ]; do sleep 0.2; i=$((i+1)); done; exec \"$0\"";
+    cmd.arg("-c").arg(script).arg(path).arg(std::process::id().to_string()).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).process_group(0);
+    platform::apply_clean_env(&mut cmd);
+    let _ = cmd.spawn();
 }
 
 fn update_arg(args: &[String]) -> Option<String> {

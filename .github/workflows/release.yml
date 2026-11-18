@@ -1,7 +1,7 @@
 name: Release
 
-# Builds the NIMVORO installer (NSIS) and publishes a GitHub Release when a vX.Y.Z tag is pushed.
-# The launcher finds the *-setup.exe asset in the release and offers to update.
+# Builds the NIMVORO installer (NSIS) on Windows and the AppImage + deb on Linux, and publishes one GitHub Release when a vX.Y.Z tag is pushed.
+# The launcher finds the *-setup.exe (Windows) or NIMVORO-linux-x64.AppImage (Linux) asset in the release and offers to update.
 on:
   push:
     tags: ["v*"]
@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   release:
+    name: Windows
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -50,6 +51,68 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: NIMVORO ${{ github.ref_name }}
-          releaseBody: Windows installer is the *-setup.exe file below. An installed NIMVORO offers the update by itself.
+          releaseBody: "Windows: the *-setup.exe installer. Linux: NIMVORO-linux-x64.AppImage (chmod +x and run) or the .deb. An installed NIMVORO offers the update by itself."
           releaseDraft: false
           prerelease: false
+
+  linux:
+    name: Linux
+    # The Windows job creates the release; this one attaches the Linux files to it.
+    needs: release
+    runs-on: ubuntu-22.04
+    env:
+      # No FUSE on the runner: the AppImage tools unpack themselves instead of mounting.
+      APPIMAGE_EXTRACT_AND_RUN: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Versions match the tag
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          pkg=$(node -p "require('./package.json').version")
+          conf=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          cargo=$(grep -m1 -E '^version\s*=' src-tauri/Cargo.toml | sed -E 's/.*"(.+)".*/\1/')
+          if [ "$pkg" != "$conf" ] || [ "$pkg" != "$cargo" ]; then echo "Version mismatch: package.json $pkg, tauri.conf.json $conf, Cargo.toml $cargo"; exit 1; fi
+          if [ "$REF_TYPE" = "tag" ] && [ "$REF_NAME" != "v$pkg" ]; then echo "Tag $REF_NAME does not match version $pkg"; exit 1; fi
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libxdo-dev patchelf xdg-utils
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: Type check and build the UI
+        run: npm run build
+
+      - name: Tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Build the AppImage and the deb
+        run: npx tauri build --bundles deb,appimage
+
+      - name: Name the assets
+        run: |
+          mkdir dist-linux
+          cp src-tauri/target/release/bundle/appimage/*.AppImage dist-linux/NIMVORO-linux-x64.AppImage
+          cp src-tauri/target/release/bundle/deb/*.deb dist-linux/NIMVORO-linux-x64.deb
+          ls -l dist-linux
+
+      - name: Attach to the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" dist-linux/NIMVORO-linux-x64.AppImage dist-linux/NIMVORO-linux-x64.deb --clobber

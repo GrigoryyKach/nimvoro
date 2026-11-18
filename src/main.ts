@@ -9,7 +9,7 @@ import { icons, logo } from './icons';
 import { onProgress, patch, setView, state, subscribe } from './store';
 import { card, refreshActions, row } from './ui/cards';
 import { openDetails } from './ui/details';
-import { applyLauncherUpdate, checkLauncherUpdate } from './ui/launcher-update';
+import { applyLauncherUpdate, checkLauncherUpdate, updateLabel } from './ui/launcher-update';
 import { openSettings } from './ui/settings';
 import { toast } from './ui/toast';
 
@@ -149,7 +149,7 @@ function renderBanner(): void {
   clear(banner);
   const rel = state.launcherUpdate;
   if (!rel) return;
-  const btn = h('button', { class: 'btn primary small' }, tr('banner.updateTo', { v: rel.version })) as HTMLButtonElement;
+  const btn = h('button', { class: 'btn primary small' }, updateLabel()) as HTMLButtonElement;
   btn.addEventListener('click', () => applyLauncherUpdate(btn));
   banner.append(
     h('div', { class: 'banner' },

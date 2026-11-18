@@ -1,5 +1,5 @@
 import type { Feature, Tool } from './api';
-import { getLang, locale, t } from './i18n';
+import { getLang, isLinux, locale, t } from './i18n';
 
 export function formatSize(bytes: number): string {
   if (!bytes) return '—';
@@ -28,6 +28,29 @@ export interface LocalizedText {
   requirements: string[];
 }
 
+/** Manifests may give requirements as one string or as a list. */
+function asList(v: string | string[] | undefined): string[] {
+  if (Array.isArray(v)) return v.filter(x => typeof x === 'string' && x.trim());
+  return typeof v === 'string' && v.trim() ? [v] : [];
+}
+
+/**
+ * Requirements for this platform. On Linux: `i18n.<lang>.linux.requirements`, then `linux.requirements`, then the
+ * translated and base top-level ones. On Windows: the translated and base top-level ones.
+ */
+function requirementsFor(tool: Tool): string[] {
+  const m = tool.manifest;
+  const lang = getLang();
+  const o = lang === 'en' ? undefined : m?.i18n?.[lang];
+  const chain = [o?.requirements, m?.requirements];
+  if (isLinux()) chain.unshift(o?.linux?.requirements, m?.linux?.requirements);
+  for (const c of chain) {
+    const list = asList(c);
+    if (list.length) return list;
+  }
+  return [];
+}
+
 export function loc(tool: Tool): LocalizedText {
   const m = tool.manifest;
   const lang = getLang();
@@ -38,7 +61,7 @@ export function loc(tool: Tool): LocalizedText {
     description: o?.description || m?.description || '',
     category: o?.category || m?.category,
     features: o?.features?.length ? o.features : (m?.features ?? []),
-    requirements: o?.requirements?.length ? o.requirements : (m?.requirements ?? []),
+    requirements: requirementsFor(tool),
   };
 }
 

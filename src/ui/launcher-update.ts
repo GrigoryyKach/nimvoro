@@ -13,16 +13,24 @@ export async function checkLauncherUpdate(manual = false): Promise<void> {
   }
 }
 
+/** Banner button: "Update to X", or "Open release page" where the launcher cannot replace itself (deb install). */
+export function updateLabel(): string {
+  const u = state.launcherUpdate;
+  return u?.mode === 'page' ? tr('banner.openPage') : tr('banner.updateTo', { v: u?.version ?? '' });
+}
+
 export async function applyLauncherUpdate(btn: HTMLButtonElement): Promise<void> {
   btn.disabled = true;
   try {
     await api.launcherUpdateApply(p => {
+      if (state.launcherUpdate?.mode === 'appimage' && p.stage === 'done') btn.textContent = tr('banner.restarting');
+      else
       if (p.stage === 'download') btn.textContent = tr('banner.downloading', { p: p.total ? Math.floor((p.received / p.total) * 100) : 0 });
       else btn.textContent = tr('banner.launching');
     });
   } catch (e) {
     btn.disabled = false;
-    btn.textContent = tr('banner.updateTo', { v: state.launcherUpdate?.version ?? '' });
+    btn.textContent = updateLabel();
     toast(errorText(e), 'error');
   }
 }

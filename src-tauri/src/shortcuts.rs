@@ -1,7 +1,12 @@
-//! Windows shortcuts (`.lnk`) created through the shell COM API (`IShellLinkW`): no child processes, no console windows.
+//! Shortcuts.
 //!
+//! Windows: `.lnk` files created through the shell COM API (`IShellLinkW`): no child processes, no console windows.
 //! - Start menu: `%APPDATA%\Microsoft\Windows\Start Menu\Programs\<Name>.lnk` (always);
 //! - desktop: `<Desktop>\<Name>.lnk` (only if the user asked for it in the install dialog).
+//!
+//! Linux: `.desktop` entries (`nimvoro-<id>.desktop`).
+//! - menu: `~/.local/share/applications/` (always);
+//! - desktop: the `xdg-user-dir DESKTOP` folder (on request), made executable and marked trusted with `gio`.
 
 use crate::store::{self, Installed};
 use std::path::{Path, PathBuf};
@@ -18,16 +23,49 @@ pub fn start_menu_dir() -> PathBuf {
     if let Some(d) = env_dir(START_MENU_ENV) {
         return d;
     }
-    dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("Microsoft").join("Windows").join("Start Menu").join("Programs")
+    #[cfg(windows)]
+    {
+        dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("Microsoft").join("Windows").join("Start Menu").join("Programs")
+    }
+    #[cfg(not(windows))]
+    {
+        dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("applications")
+    }
 }
 
-/// Path of the Start-menu shortcut for a tool with this display name.
-pub fn start_menu_lnk(name: &str) -> PathBuf {
-    start_menu_dir().join(format!("{}.lnk", store::folder_name(name)))
+/// File name of a tool's shortcut: `<Name>.lnk` on Windows, `nimvoro-<id>.desktop` on Linux.
+fn file_name(id: &str, name: &str) -> String {
+    if cfg!(windows) {
+        format!("{}.lnk", store::folder_name(name))
+    } else {
+        format!("nimvoro-{}.desktop", store::folder_name(id))
+    }
 }
 
-pub fn desktop_lnk(name: &str) -> Option<PathBuf> {
-    env_dir(DESKTOP_ENV).or_else(dirs::desktop_dir).map(|d| d.join(format!("{}.lnk", store::folder_name(name))))
+/// Path of the menu shortcut for a tool.
+pub fn start_menu_lnk(id: &str, name: &str) -> PathBuf {
+    start_menu_dir().join(file_name(id, name))
+}
+
+#[cfg(not(windows))]
+fn user_desktop_dir() -> Option<PathBuf> {
+    let from_xdg = std::process::Command::new("xdg-user-dir")
+        .arg("DESKTOP")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| PathBuf::from(String::from_utf8_lossy(&o.stdout).trim()))
+        .filter(|p| !p.as_os_str().is_empty() && p.is_dir() && Some(p.as_path()) != dirs::home_dir().as_deref());
+    from_xdg.or_else(dirs::desktop_dir)
+}
+
+#[cfg(windows)]
+fn user_desktop_dir() -> Option<PathBuf> {
+    dirs::desktop_dir()
+}
+
+pub fn desktop_lnk(id: &str, name: &str) -> Option<PathBuf> {
+    env_dir(DESKTOP_ENV).or_else(user_desktop_dir).map(|d| d.join(file_name(id, name)))
 }
 
 /// Creates (or overwrites) a shortcut `lnk` pointing at `target`.
@@ -60,37 +98,65 @@ pub fn create(lnk: &Path, target: &Path, description: &str) -> Result<(), String
     }
 }
 
+/// Writes a `.desktop` entry: `Exec=` the quoted `target`, `Icon=` the `icon.png` next to it (when there is one).
 #[cfg(not(windows))]
-pub fn create(_lnk: &Path, _target: &Path, _description: &str) -> Result<(), String> {
-    Err("shortcuts are only supported on Windows".into())
+pub fn create(lnk: &Path, target: &Path, description: &str) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    if let Some(parent) = lnk.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let work_dir = target.parent().unwrap_or(Path::new("/"));
+    let icon = work_dir.join("icon.png");
+    let content = crate::platform::desktop_entry(description, target, work_dir, icon.is_file().then_some(icon.as_path()));
+    std::fs::write(lnk, content).map_err(|e| e.to_string())?;
+    std::fs::set_permissions(lnk, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())
 }
 
-/// Makes sure the tool has its Start-menu shortcut (and a desktop one if `desktop`).
+/// GNOME only runs a `.desktop` file from the desktop folder when it is marked trusted. Best effort: `gio` may be missing.
+#[cfg(not(windows))]
+fn mark_trusted(path: &Path) {
+    let _ = std::process::Command::new("gio")
+        .args(["set"])
+        .arg(path)
+        .arg("metadata::trusted")
+        .arg("true")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+}
+
+#[cfg(windows)]
+fn mark_trusted(_path: &Path) {}
+
+/// Makes sure the tool has its menu shortcut (and a desktop one if `desktop`).
 /// Returns the paths of all shortcuts that now exist for it, merged with `known`.
-pub fn ensure(name: &str, inst: &Installed, desktop: bool, known: &[String]) -> Vec<String> {
+pub fn ensure(id: &str, name: &str, inst: &Installed, desktop: bool, known: &[String]) -> Vec<String> {
     let target = PathBuf::from(&inst.dir).join(&inst.exe);
     let mut list: Vec<String> = known.to_vec();
-    let mut want = vec![start_menu_lnk(name)];
+    let mut want = vec![(start_menu_lnk(id, name), false)];
     if desktop {
-        want.extend(desktop_lnk(name));
+        want.extend(desktop_lnk(id, name).map(|p| (p, true)));
     }
-    for lnk in want {
+    for (lnk, on_desktop) in want {
         let path = lnk.display().to_string();
         let exists = lnk.exists();
-        // The Start-menu shortcut is recreated when missing; the desktop one only when it is being requested now.
-        if (!exists && create(&lnk, &target, name).is_ok()) || exists {
-            if !list.iter().any(|p| p.eq_ignore_ascii_case(&path)) {
-                list.push(path);
-            }
+        // The menu shortcut is recreated when missing; the desktop one only when it is being requested now.
+        let created = !exists && create(&lnk, &target, name).is_ok();
+        if created && on_desktop {
+            mark_trusted(&lnk);
+        }
+        if (created || exists) && !list.iter().any(|p| p.eq_ignore_ascii_case(&path)) {
+            list.push(path);
         }
     }
     list
 }
 
-/// Removes the shortcuts recorded for a tool (and the Start-menu one by name).
-pub fn remove_all(name: &str, shortcuts: &[String]) {
+/// Removes the shortcuts recorded for a tool (and the menu one by name).
+pub fn remove_all(id: &str, name: &str, shortcuts: &[String]) {
     for p in shortcuts {
         let _ = std::fs::remove_file(p);
     }
-    let _ = std::fs::remove_file(start_menu_lnk(name));
+    let _ = std::fs::remove_file(start_menu_lnk(id, name));
 }

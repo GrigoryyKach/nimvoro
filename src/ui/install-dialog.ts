@@ -3,7 +3,7 @@ import { open as pickFolder } from '@tauri-apps/plugin-dialog';
 import type { Tool } from '../api';
 import { h, svg } from '../dom';
 import { toolName } from '../format';
-import { t as tr } from '../i18n';
+import { isLinux, t as tr } from '../i18n';
 import { icons } from '../icons';
 import { state } from '../store';
 import { toolIcon } from './cards';
@@ -56,7 +56,7 @@ export function askInstallOptions(tool: Tool): Promise<InstallChoice | null> {
         h('h3', { class: 'caps' }, tr('install.folder')),
         h('div', { class: 'folder-row' }, dir, browse),
         h('label', { class: 'set-row check-row' },
-          h('div', { class: 'set-text' }, h('div', { class: 'set-title' }, tr('install.desktop')), h('div', { class: 'hint' }, tr('install.startMenu'))),
+          h('div', { class: 'set-text' }, h('div', { class: 'set-title' }, tr('install.desktop')), h('div', { class: 'hint' }, tr(isLinux() ? 'install.startMenu.linux' : 'install.startMenu'))),
           h('span', { class: 'switch' }, desktopBox, h('span')),
         ),
       ),

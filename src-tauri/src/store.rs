@@ -22,9 +22,16 @@ pub fn data_dir() -> PathBuf {
     d
 }
 
-/// Default install root: `%LOCALAPPDATA%\NIMVORO\Apps`.
+/// Default install root: `%LOCALAPPDATA%\NIMVORO\Apps` on Windows, `~/.local/share/nimvoro/apps` on Linux.
 pub fn default_install_root() -> PathBuf {
-    dirs::data_local_dir().unwrap_or_else(std::env::temp_dir).join("NIMVORO").join("Apps")
+    #[cfg(windows)]
+    {
+        dirs::data_local_dir().unwrap_or_else(std::env::temp_dir).join("NIMVORO").join("Apps")
+    }
+    #[cfg(not(windows))]
+    {
+        dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("nimvoro").join("apps")
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -139,9 +146,11 @@ pub fn save_installed(map: &HashMap<String, Installed>) -> std::io::Result<()> {
     write_json(&data_dir().join("installed.json"), map)
 }
 
-/// Tells the tools where the launcher lives (they call `NIMVORO.exe --update <id>`).
+/// Tells the tools where the launcher lives (they call `<launcher> --update <id>`).
+/// On Linux that is the AppImage (`$APPIMAGE`) when there is one, otherwise the binary.
 pub fn write_launcher_path() {
-    if let Ok(exe) = std::env::current_exe() {
+    let exe = crate::platform::appimage_path().or_else(|| std::env::current_exe().ok());
+    if let Some(exe) = exe {
         let _ = write_json(&data_dir().join("launcher.json"), &serde_json::json!({ "path": exe.display().to_string() }));
     }
 }

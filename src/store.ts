@@ -1,6 +1,6 @@
 // UI state. The backend is the source of truth: every action returns a fresh View.
-import { setLang } from './i18n';
-import type { Progress, Release, Settings, Tool, View } from './api';
+import { setLang, setPlatform } from './i18n';
+import { setRawBase, type LauncherUpdate, type Progress, type Settings, type Tool, type View } from './api';
 
 export interface State {
   view: View | null;
@@ -8,7 +8,7 @@ export interface State {
   /** Install progress by tool id. */
   progress: Record<string, Progress | undefined>;
   search: string;
-  launcherUpdate: Release | null;
+  launcherUpdate: LauncherUpdate | null;
 }
 
 export const state: State = {
@@ -34,6 +34,8 @@ export function onProgress(fn: (id: string) => void): void {
 
 export function setView(v: View): void {
   state.view = v;
+  setPlatform(v.platform);
+  setRawBase(v.rawBase);
   setLang(v.settings.language); // before any subscriber re-renders
   emit();
 }

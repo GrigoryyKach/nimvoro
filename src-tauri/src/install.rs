@@ -8,7 +8,7 @@
 //! Error strings are codes (`E_...[:arg|arg]`) that the frontend translates; see `src/i18n.ts`.
 
 use crate::catalog::{self, Tool};
-use crate::shortcuts;
+use crate::{platform, shortcuts};
 use crate::store::{self, Installed, Settings};
 use futures_util::StreamExt;
 use serde::Serialize;
@@ -41,7 +41,9 @@ pub fn target_dir(tool: &Tool, settings: &Settings) -> PathBuf {
         .filter(|d| !d.trim().is_empty())
         .cloned()
         .unwrap_or_else(|| settings.install_root.clone());
-    PathBuf::from(parent).join(store::folder_name(&tool.name()))
+    // Windows: a folder named after the tool; Linux: named after the id (`.../apps/random-wheel`).
+    let folder = if cfg!(windows) { store::folder_name(&tool.name()) } else { store::folder_name(&tool.id) };
+    PathBuf::from(parent).join(folder)
 }
 
 /// Process list with exe paths.
@@ -68,9 +70,15 @@ pub fn running_in(dir: &Path) -> Vec<(sysinfo::Pid, String)> {
         .collect()
 }
 
+#[cfg(windows)]
 fn normalize(p: &Path) -> String {
     let s = p.display().to_string().replace('/', "\\").to_lowercase();
     s.trim_end_matches('\\').to_string() + "\\"
+}
+
+#[cfg(not(windows))]
+fn normalize(p: &Path) -> String {
+    p.display().to_string().trim_end_matches('/').to_string() + "/"
 }
 
 /// Closes processes running from `dir`. `Err` with the `RUNNING:` prefix if closing is not allowed.
@@ -100,7 +108,12 @@ pub async fn ensure_closed(dir: &Path, close_running: bool) -> Result<(), String
 
 /// Safe relative path from an archive entry name: no `..`, drives or absolute paths (zip slip).
 pub fn safe_relative(name: &str) -> Option<PathBuf> {
-    let p = PathBuf::from(name.replace('\\', "/"));
+    let unified = name.replace('\\', "/");
+    // A drive prefix (`C:/...`) is only an ordinary component on Linux, but an archive must never carry one.
+    if unified.as_bytes().get(1) == Some(&b':') && unified.as_bytes()[0].is_ascii_alphabetic() {
+        return None;
+    }
+    let p = PathBuf::from(unified);
     let mut out = PathBuf::new();
     for c in p.components() {
         match c {
@@ -112,16 +125,30 @@ pub fn safe_relative(name: &str) -> Option<PathBuf> {
     (!out.as_os_str().is_empty()).then_some(out)
 }
 
+/// Archive extension of a release asset (`zip` or `tar.gz`); decides how it is unpacked.
+fn archive_ext(asset_name: Option<&str>) -> &'static str {
+    match asset_name {
+        Some(n) if n.ends_with(".tar.gz") || n.ends_with(".tgz") => "tar.gz",
+        _ => "zip",
+    }
+}
+
 pub async fn download_to_temp(tool: &Tool, ch: &Channel<Progress>) -> Result<PathBuf, String> {
     let rel = tool.release.as_ref().ok_or("E_NO_RELEASE")?;
+    let path = std::env::temp_dir().join(format!("nimvoro-{}-{}.{}", tool.id, rel.version, archive_ext(rel.asset_name.as_deref())));
+    download_asset(rel, &path, ch).await?;
+    Ok(path)
+}
+
+/// Downloads the release asset to `path`, checking the SHA-256 GitHub computed for it (the file is removed on mismatch).
+pub async fn download_asset(rel: &catalog::Release, path: &Path, ch: &Channel<Progress>) -> Result<(), String> {
     let url = rel.asset_url.as_ref().ok_or("E_NO_ASSET")?;
     let resp = catalog::client().get(url).send().await.map_err(|e| format!("E_DOWNLOAD:{e}"))?;
     if !resp.status().is_success() {
         return Err(format!("E_GITHUB_STATUS:{}", resp.status().as_u16()));
     }
     let total = resp.content_length().unwrap_or(rel.asset_size);
-    let path = std::env::temp_dir().join(format!("nimvoro-{}-{}.zip", tool.id, rel.version));
-    let mut file = std::fs::File::create(&path).map_err(|e| format!("E_TEMP_FILE:{e}"))?;
+    let mut file = std::fs::File::create(path).map_err(|e| format!("E_TEMP_FILE:{e}"))?;
     let mut hasher = Sha256::new();
     let mut received = 0u64;
     let mut last_sent = 0u64;
@@ -141,14 +168,70 @@ pub async fn download_to_temp(tool: &Tool, ch: &Channel<Progress>) -> Result<Pat
     if let Some(expected) = rel.digest.as_deref().and_then(|d| d.strip_prefix("sha256:")) {
         let actual = hex::encode(hasher.finalize());
         if !actual.eq_ignore_ascii_case(expected) {
-            let _ = std::fs::remove_file(&path);
+            let _ = std::fs::remove_file(path);
             return Err("E_CHECKSUM".into());
         }
     }
-    Ok(path)
+    Ok(())
 }
 
-fn extract(zip_path: &Path, dest: &Path) -> Result<(Vec<String>, u64), String> {
+/// Relative path as stored in `installed.json`: backslashes on Windows (as before), slashes elsewhere.
+fn stored_name(rel: &Path) -> String {
+    let s = rel.to_string_lossy().into_owned();
+    if cfg!(windows) { s.replace('/', "\\") } else { s }
+}
+
+/// Unpacks a downloaded archive (`.tar.gz` or `.zip`) into `dest`; returns the relative file names and the total size.
+pub fn extract(archive: &Path, dest: &Path) -> Result<(Vec<String>, u64), String> {
+    if archive.to_string_lossy().ends_with(".tar.gz") {
+        extract_tar_gz(archive, dest)
+    } else {
+        extract_zip(archive, dest)
+    }
+}
+
+/// `.tar.gz`: regular files and folders only (links are skipped); the Unix mode of every file is kept.
+fn extract_tar_gz(archive: &Path, dest: &Path) -> Result<(Vec<String>, u64), String> {
+    let file = std::fs::File::open(archive).map_err(|e| e.to_string())?;
+    let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(file));
+    std::fs::create_dir_all(dest).map_err(|e| format!("E_FOLDER:{}|{e}", dest.display()))?;
+    let mut files = vec![];
+    let mut size = 0u64;
+    for entry in tar.entries().map_err(|e| format!("E_ARCHIVE:{e}"))? {
+        let mut entry = entry.map_err(|e| format!("E_ARCHIVE:{e}"))?;
+        let name = entry.path().map_err(|e| format!("E_ARCHIVE:{e}"))?.to_string_lossy().into_owned();
+        let Some(rel) = safe_relative(&name) else { continue };
+        let out = dest.join(&rel);
+        let kind = entry.header().entry_type();
+        if kind.is_dir() {
+            std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+            continue;
+        }
+        if !kind.is_file() {
+            continue;
+        }
+        if let Some(parent) = out.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let mode = entry.header().mode().unwrap_or(0o644);
+        // A binary that a running process still maps cannot be rewritten in place; unlink first and create a new file.
+        let _ = std::fs::remove_file(&out);
+        let mut f = std::fs::File::create(&out).map_err(|e| format!("E_FILE_IO:{}|{e}", rel.display()))?;
+        size += std::io::copy(&mut entry, &mut f).map_err(|e| format!("E_FILE_IO:{}|{e}", rel.display()))?;
+        drop(f);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&out, std::fs::Permissions::from_mode(mode | 0o600));
+        }
+        #[cfg(not(unix))]
+        let _ = mode;
+        files.push(stored_name(&rel));
+    }
+    Ok((files, size))
+}
+
+fn extract_zip(zip_path: &Path, dest: &Path) -> Result<(Vec<String>, u64), String> {
     let file = std::fs::File::open(zip_path).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| format!("E_ARCHIVE:{e}"))?;
     std::fs::create_dir_all(dest).map_err(|e| format!("E_FOLDER:{}|{e}", dest.display()))?;
@@ -168,7 +251,7 @@ fn extract(zip_path: &Path, dest: &Path) -> Result<(Vec<String>, u64), String> {
         }
         let mut f = std::fs::File::create(&out).map_err(|e| format!("E_FILE_IO:{}|{e}", rel.display()))?;
         size += std::io::copy(&mut entry, &mut f).map_err(|e| format!("E_FILE_IO:{}|{e}", rel.display()))?;
-        files.push(rel.to_string_lossy().replace('/', "\\"));
+        files.push(stored_name(&rel));
     }
     Ok((files, size))
 }
@@ -225,7 +308,7 @@ pub fn write_marker(dir: &Path, tool: &Tool, version: &str, language: &str) {
 }
 
 pub async fn install(tool: &Tool, settings: &Settings, prev: Option<&Installed>, opts: InstallOpts, ch: &Channel<Progress>) -> Result<Installed, String> {
-    let exe = tool.manifest["exe"].as_str().ok_or("E_NO_EXE_FIELD")?.to_string();
+    let exe = platform::manifest_str(&tool.manifest, "exe", platform::OS).ok_or("E_NO_EXE_FIELD")?;
     let dest = match (prev, &opts.dest) {
         (Some(p), _) => PathBuf::from(&p.dir),
         (None, Some(d)) => {
@@ -268,14 +351,14 @@ pub async fn install(tool: &Tool, settings: &Settings, prev: Option<&Installed>,
     // A desktop shortcut is only offered on first install; updates keep what exists and restore a missing Start-menu one.
     let desktop = prev.is_none() && opts.desktop_shortcut;
     inst.shortcuts = {
-        let (name, snapshot, known) = (tool.name(), inst.clone(), inst.shortcuts.clone());
-        tokio::task::spawn_blocking(move || shortcuts::ensure(&name, &snapshot, desktop, &known)).await.map_err(|e| e.to_string())?
+        let (id, name, snapshot, known) = (tool.id.clone(), tool.name(), inst.clone(), inst.shortcuts.clone());
+        tokio::task::spawn_blocking(move || shortcuts::ensure(&id, &name, &snapshot, desktop, &known)).await.map_err(|e| e.to_string())?
     };
     let _ = ch.send(Progress::Done { version });
     Ok(inst)
 }
 
-pub async fn uninstall(inst: &Installed, name: &str, close_running: bool) -> Result<(), String> {
+pub async fn uninstall(inst: &Installed, id: &str, name: &str, close_running: bool) -> Result<(), String> {
     let dir = PathBuf::from(&inst.dir);
     ensure_closed(&dir, close_running).await?;
     let mut files = inst.files.clone();
@@ -285,6 +368,6 @@ pub async fn uninstall(inst: &Installed, name: &str, close_running: bool) -> Res
     if dir.join(&inst.exe).exists() {
         return Err("E_UNINSTALL_LEFT".into());
     }
-    shortcuts::remove_all(name, &inst.shortcuts);
+    shortcuts::remove_all(id, name, &inst.shortcuts);
     Ok(())
 }

@@ -3,6 +3,7 @@
 //!
 //! Error strings returned here are codes (`E_...[:arg|arg]`) that the frontend translates; see `src/i18n.ts`.
 
+use crate::platform;
 use crate::store::{self, data_dir};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -80,8 +81,25 @@ fn github_get(c: &reqwest::Client, url: &str) -> reqwest::RequestBuilder {
     r.timeout(Duration::from_secs(20))
 }
 
+/// Test override: a local mirror of GitHub. With `NIMVORO_TEST_BASE_URL=http://127.0.0.1:8000` the launcher reads
+/// `<base>/<repo>/main/<path>` instead of raw.githubusercontent.com and `<base>/repos/<repo>/releases/latest` instead of the API.
+pub const TEST_BASE_ENV: &str = "NIMVORO_TEST_BASE_URL";
+
+pub fn test_base() -> Option<String> {
+    std::env::var(TEST_BASE_ENV).ok().map(|b| b.trim_end_matches('/').to_string()).filter(|b| !b.is_empty())
+}
+
+/// Where `raw_url` points: the frontend builds icon and screenshot URLs from it.
+pub fn raw_base() -> String {
+    test_base().unwrap_or_else(|| "https://raw.githubusercontent.com".into())
+}
+
+fn api_base() -> String {
+    test_base().map(|b| format!("{b}/repos")).unwrap_or_else(|| "https://api.github.com/repos".into())
+}
+
 pub fn raw_url(repo: &str, path: &str) -> String {
-    format!("https://raw.githubusercontent.com/{repo}/main/{}", path.trim_start_matches('/'))
+    format!("{}/{repo}/main/{}", raw_base(), path.trim_start_matches('/'))
 }
 
 async fn fetch_catalog(c: &reqwest::Client) -> Vec<CatalogEntry> {
@@ -108,7 +126,8 @@ pub fn parse_release(v: &Value, asset_name: Option<&str>) -> Release {
                 // "*-setup.exe": any name with this ending.
                 Some(n) if n.starts_with('*') => name.ends_with(&n[1..]),
                 Some(n) => name == n,
-                None => name.ends_with(".zip"),
+                // Without a name only Windows has a default (a zip); on Linux an unnamed asset is never guessed.
+                None => cfg!(windows) && name.ends_with(".zip"),
             }
         })
     });
@@ -125,7 +144,7 @@ pub fn parse_release(v: &Value, asset_name: Option<&str>) -> Release {
 }
 
 pub async fn latest_release(c: &reqwest::Client, repo: &str, asset_name: Option<&str>) -> Result<Release, String> {
-    let r = github_get(c, &format!("https://api.github.com/repos/{repo}/releases/latest"))
+    let r = github_get(c, &format!("{}/{repo}/releases/latest", api_base()))
         .send()
         .await
         .map_err(|e| format!("E_NETWORK:{e}"))?;
@@ -149,7 +168,7 @@ async fn fetch_tool(c: &reqwest::Client, e: &CatalogEntry) -> Tool {
     };
     let (manifest, release) = match manifest.await {
         Ok(m) => {
-            let asset = m["asset"].as_str().map(str::to_string);
+            let asset = platform::manifest_str(&m, "asset", platform::OS);
             let rel = latest_release(c, &e.repo, asset.as_deref()).await;
             (Ok(m), rel)
         }
