@@ -10,14 +10,14 @@ import { openMenu, type MenuItem } from './menu';
 
 /** Each tool's own accent (dark theme, light theme), from the suite's per-app table. Used only for the 2 px rule under the name. */
 const TOOL_ACCENTS: Record<string, [string, string]> = {
-  'random-wheel': ['#ec5b45', '#d6402b'],
-  'save-urls': ['#e0a82e', '#9a6a00'],
+  'random-wheel': ['#ec5b45', '#c93a25'],
+  'save-urls': ['#e0a82e', '#946500'],
   sidekick: ['#2cb5d6', '#0e7490'],
   snapper: ['#35a7ff', '#0b6bcb'],
-  planora: ['#2ec4b6', '#0f8a7e'],
+  planora: ['#2ec4b6', '#0c7a70'],
   'dice-roller': ['#4cae85', '#1f7a52'],
   'smart-switcher': ['#5b78ff', '#3f5bf0'],
-  'fps-overlay': ['#4fc3f7', '#0b79b0'],
+  'fps-overlay': ['#4fc3f7', '#0b6e9f'],
 };
 
 /** The signature: a short 2 px rule in the tool's accent colour, placed under its name. */
