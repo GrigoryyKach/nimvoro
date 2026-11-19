@@ -8,11 +8,29 @@ import { icons } from '../icons';
 import { percent, state } from '../store';
 import { openMenu, type MenuItem } from './menu';
 
-/** Tool icon from its repository; until it loads (or without network) a gradient with a letter. */
+/** Each tool's own accent (dark theme, light theme), from the suite's per-app table. Used only for the 2 px rule under the name. */
+const TOOL_ACCENTS: Record<string, [string, string]> = {
+  'random-wheel': ['#ec5b45', '#d6402b'],
+  'save-urls': ['#e0a82e', '#9a6a00'],
+  sidekick: ['#2cb5d6', '#0e7490'],
+  snapper: ['#35a7ff', '#0b6bcb'],
+  planora: ['#2ec4b6', '#0f8a7e'],
+  'dice-roller': ['#4cae85', '#1f7a52'],
+  'smart-switcher': ['#5b78ff', '#3f5bf0'],
+  'fps-overlay': ['#4fc3f7', '#0b79b0'],
+};
+
+/** The signature: a short 2 px rule in the tool's accent colour, placed under its name. */
+export function toolRule(t: Tool): HTMLElement {
+  const own = TOOL_ACCENTS[t.id];
+  const rule = h('span', { class: 'rule', 'aria-hidden': 'true' });
+  if (own) rule.style.cssText = `--ta-dark:${own[0]};--ta-light:${own[1]}`;
+  return rule;
+}
+
+/** Tool icon from its repository; until it loads (or without network) a flat tile with the first letter. */
 export function toolIcon(t: Tool, size: number): HTMLElement {
-  const box = h('div', { class: 'tool-icon', style: `width:${size}px;height:${size}px;border-radius:${Math.round(size * 0.24)}px` });
-  const [a, b] = t.manifest?.accent ?? ['#4f6bff', '#8a5bff'];
-  box.style.background = `linear-gradient(135deg, ${a}, ${b})`;
+  const box = h('div', { class: 'tool-icon', style: `width:${size}px;height:${size}px;border-radius:${Math.round(size * 0.22)}px` });
   box.append(h('span', { class: 'tool-icon-letter', style: `font-size:${Math.round(size * 0.46)}px` }, toolName(t).slice(0, 1).toUpperCase()));
   if (t.manifest?.icon) {
     const img = h('img', { src: rawUrl(t.repo, t.manifest.icon), alt: '', draggable: 'false' });
@@ -46,7 +64,7 @@ function fillAction(wrap: HTMLElement, t: Tool): void {
     const label = p.stage === 'download' ? `${pct}%` : p.stage === 'verify' ? tr('progress.verifying') : p.stage === 'extract' ? tr('progress.extracting') : tr('progress.done');
     wrap.append(
       h('div', { class: 'btn progress', role: 'progressbar', 'aria-valuenow': pct, 'aria-valuemin': 0, 'aria-valuemax': 100 },
-        h('div', { class: 'progress-fill', style: `width:${pct}%` }),
+        h('div', { class: 'progress-fill', style: `transform:scaleX(${pct / 100})` }),
         h('span', { class: 'progress-label' }, tr(t.installed ? 'progress.update' : 'progress.install', { s: label })),
       ),
     );
@@ -59,7 +77,7 @@ function fillAction(wrap: HTMLElement, t: Tool): void {
   if (t.updateAvailable) {
     wrap.append(h('button', { class: 'btn primary', onclick: stop(() => act.install(t.id)) }, svg(icons.download), tr('btn.updateTo', { v: t.release?.version ?? '' })));
   } else if (t.installed) {
-    wrap.append(h('button', { class: 'btn ghost strong', onclick: stop(() => act.launch(t.id)) }, svg(icons.play), tr('btn.open')));
+    wrap.append(h('button', { class: 'btn', onclick: stop(() => act.launch(t.id)) }, svg(icons.play), tr('btn.open')));
   } else {
     const can = !!t.release?.assetUrl;
     wrap.append(
@@ -116,15 +134,15 @@ function head(t: Tool): HTMLElement {
   return h(
     'div',
     { class: 'card-head' },
-    h('span', { class: `mono ver${t.updateAvailable ? ' accent' : ''}` }, v ? `V${v}` : '—'),
+    h('span', { class: `ver${t.updateAvailable ? ' accent' : ''}` }, v ? `v${v}` : '—'),
     h('button', {
-      class: 'mono gh',
+      class: 'gh',
       title: `github.com/${t.repo}`,
       onclick: (e: Event) => {
         e.stopPropagation();
         act.openUrl(`https://github.com/${t.repo}`);
       },
-    }, 'GITHUB', svg(icons.external, 'ico tiny')),
+    }, 'GitHub', svg(icons.external)),
   );
 }
 
@@ -142,9 +160,10 @@ export function card(t: Tool, openDetails: () => void): HTMLElement {
       { class: 'card-body' },
       h('div', { class: 'ident' }, toolIcon(t, 56), h('div', { class: 'ident-text' },
         h('div', { class: 'name' }, toolName(t)),
+        toolRule(t),
         h('div', { class: 'tagline', title: m.tagline }, m.tagline || translateCode(t.error)),
       )),
-      h('div', { class: 'badges' }, h('span', { 'data-status-for': t.id }, statusBadge(t)), m.category && h('span', { class: 'badge mono' }, m.category)),
+      h('div', { class: 'badges' }, h('span', { 'data-status-for': t.id }, statusBadge(t)), m.category && h('span', { class: 'badge plain' }, m.category)),
       meta,
       h('p', { class: 'desc' }, m.description),
       h('div', { class: 'updated' }, tr('card.lastUpdated', { d: formatDate(t.release?.publishedAt) })),
@@ -165,7 +184,7 @@ export function row(t: Tool, openDetails: () => void): HTMLElement {
     { class: 'row-item', tabindex: '0', 'aria-label': toolName(t) },
     toolIcon(t, 40),
     h('div', { class: 'row-main' },
-      h('div', { class: 'row-title' }, h('span', { class: 'name' }, toolName(t)), h('span', { class: 'mono ver' }, shownVersion(t) ? `V${shownVersion(t)}` : '')),
+      h('div', { class: 'row-title' }, h('span', { class: 'name' }, toolName(t)), h('span', { class: 'ver' }, shownVersion(t) ? `v${shownVersion(t)}` : '')),
       h('div', { class: 'tagline' }, m.tagline || translateCode(t.error)),
     ),
     h('div', { class: 'row-status', 'data-status-for': t.id }, statusBadge(t)),

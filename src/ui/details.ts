@@ -6,7 +6,7 @@ import { formatDate, formatSize, loc, toolName } from '../format';
 import { t as tr, translateCode } from '../i18n';
 import { icons } from '../icons';
 import { state, subscribe } from '../store';
-import { actionButton, statusBadge, toolIcon } from './cards';
+import { actionButton, statusBadge, toolIcon, toolRule } from './cards';
 import { openModal } from './dialog';
 
 let openId: string | null = null;
@@ -45,11 +45,12 @@ function header(t: Tool, close: () => void): HTMLElement {
     toolIcon(t, 64),
     h('div', { class: 'details-title' },
       h('div', { class: 'details-name' }, toolName(t)),
+      toolRule(t),
       h('div', { class: 'tagline' }, m.tagline),
       h('div', { class: 'badges' },
         h('span', { 'data-status-for': t.id }, statusBadge(t)),
-        t.release && h('span', { class: 'badge mono' }, `V${t.release.version}`),
-        m.category && h('span', { class: 'badge mono' }, m.category),
+        t.release && h('span', { class: 'badge plain mono' }, `v${t.release.version}`),
+        m.category && h('span', { class: 'badge plain' }, m.category),
       ),
     ),
     h('button', { class: 'icon-btn', 'aria-label': tr('common.close'), onclick: close }, svg(icons.close)),
@@ -106,17 +107,17 @@ function body(t: Tool, slide: number, onSlide: (i: number) => void): HTMLElement
     carousel(t, slide, onSlide),
     t.error && h('div', { class: 'note warn' }, svg(icons.alert), translateCode(t.error)),
     h('p', { class: 'details-desc' }, m.description),
-    m.features.length > 0 && h('h3', { class: 'caps' }, tr('details.features')),
+    m.features.length > 0 && h('h3', { class: 'section-title' }, tr('details.features')),
     m.features.length > 0 &&
-      h('div', { class: 'features' }, ...m.features.map(f => h('div', { class: 'feature' }, svg(icons.sparkle), h('div', null, h('div', { class: 'feature-title' }, f.title), h('div', { class: 'feature-text' }, f.text))))),
-    m.requirements.length > 0 && h('h3', { class: 'caps' }, tr('details.requirements')),
+      h('div', { class: 'features' }, ...m.features.map(f => h('div', { class: 'feature' }, h('div', { class: 'feature-title' }, f.title), h('div', { class: 'feature-text' }, f.text)))),
+    m.requirements.length > 0 && h('h3', { class: 'section-title' }, tr('details.requirements')),
     m.requirements.length > 0 && h('ul', { class: 'reqs' }, ...m.requirements.map(r => h('li', null, r))),
-    h('h3', { class: 'caps' }, tr(t.installed ? 'details.installedIn' : 'details.willInstallIn')),
+    h('h3', { class: 'section-title' }, tr(t.installed ? 'details.installedIn' : 'details.willInstallIn')),
     h(
       'div',
       { class: 'path-row' },
       h('span', { class: 'path mono', title: t.targetDir }, t.targetDir),
-      t.installed && h('button', { class: 'btn ghost small', onclick: () => act.openFolder(t.id) }, svg(icons.folder), tr('details.openFolder')),
+      t.installed && h('button', { class: 'btn small', onclick: () => act.openFolder(t.id) }, svg(icons.folder), tr('details.openFolder')),
     ),
   );
 }
@@ -131,9 +132,9 @@ function footer(t: Tool): HTMLElement {
       h('div', { class: 'muted' }, tr('details.updatedOn', { d: formatDate(t.release?.publishedAt) })),
     ),
     h('div', { class: 'foot-actions' },
-      h('button', { class: 'btn ghost', onclick: () => act.openUrl(`https://github.com/${t.repo}`) }, 'GitHub', svg(icons.external, 'ico tiny')),
-      t.installed && h('button', { class: 'btn ghost danger-text', onclick: () => act.uninstall(t.id) }, tr('details.uninstall')),
-      t.updateAvailable && h('button', { class: 'btn ghost', onclick: () => act.launch(t.id) }, tr('btn.open')),
+      h('button', { class: 'btn', onclick: () => act.openUrl(`https://github.com/${t.repo}`) }, 'GitHub', svg(icons.external)),
+      t.installed && h('button', { class: 'btn danger-text', onclick: () => act.uninstall(t.id) }, tr('details.uninstall')),
+      t.updateAvailable && h('button', { class: 'btn', onclick: () => act.launch(t.id) }, tr('btn.open')),
       actionButton(t, 'wide'),
     ),
   );

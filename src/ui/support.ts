@@ -8,12 +8,12 @@ export const SUPPORT_URL = 'https://donatello.to/MicsGame';
 
 export function supportSection(): HTMLElement[] {
   return [
-    h('h3', { class: 'caps' }, t('support.title')),
+    h('h3', { class: 'section-title' }, t('support.title')),
     h('div', { class: 'set-card' },
       h('div', { class: 'set-row support-row' },
         h('div', { class: 'set-text' },
           h('div', { class: 'hint' }, t('support.text')),
-          h('button', { class: 'btn primary small support-btn', onclick: () => void openUrl(SUPPORT_URL) }, svg(icons.external), t('support.button')),
+          h('button', { class: 'btn small support-btn', onclick: () => void openUrl(SUPPORT_URL) }, svg(icons.external), t('support.button')),
         ),
         h('figure', { class: 'support-qr' },
           h('img', { src: './support-qr.png', width: 128, height: 128, alt: SUPPORT_URL }),

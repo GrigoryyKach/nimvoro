@@ -18,7 +18,7 @@ const app = document.getElementById('app')!;
 
 // ───────────────────────── window frame ─────────────────────────
 
-const brandSub = h('div', { class: 'brand-sub mono', 'data-tauri-drag-region': true });
+const brandSub = h('div', { class: 'brand-sub', 'data-tauri-drag-region': true });
 const btnSettings = h('button', { class: 'tb-btn', onclick: () => openSettings() }, svg(icons.gear));
 const btnMin = h('button', { class: 'tb-btn', onclick: () => win.minimize() }, svg(icons.minimize));
 const btnMax = h('button', { class: 'tb-btn', onclick: () => win.toggleMaximize() }, svg(icons.maximize));
@@ -57,11 +57,11 @@ refreshBtn.addEventListener('click', async () => {
   toast(n ? tn('toast.updatesAvailable', n) : tr('toast.upToDate'), n ? 'info' : 'ok');
 });
 
-const updateAllBtn = h('button', { class: 'btn primary small', onclick: () => act.updateAll() });
+const updateAllBtn = h('button', { class: 'btn primary', onclick: () => act.updateAll() });
 const viewGrid = h('button', { class: 'seg icon', onclick: () => saveSettings({ view: 'grid' }) }, svg(icons.grid));
 const viewList = h('button', { class: 'seg icon', onclick: () => saveSettings({ view: 'list' }) }, svg(icons.list));
 
-const sortLabel = h('label', { class: 'mono caps-label' });
+const sortLabel = h('label', { class: 'caps-label' });
 
 const toolbar = h(
   'div',
@@ -133,14 +133,14 @@ function section(title: string, tools: Tool[], view: Settings['view']): HTMLElem
   if (!tools.length) return null;
   const items = tools.map(t => (view === 'grid' ? card(t, () => openDetails(t.id)) : row(t, () => openDetails(t.id))));
   return h('section', { class: 'section' },
-    h('h2', { class: 'mono section-title' }, `${title} · ${tools.length}`),
+    h('h2', { class: 'section-title' }, title, h('span', { class: 'count' }, String(tools.length))),
     h('div', { class: view === 'grid' ? 'grid' : 'list' }, ...items),
   );
 }
 
 function skeleton(): HTMLElement {
   return h('section', { class: 'section' },
-    h('h2', { class: 'mono section-title' }, tr('section.loading')),
+    h('h2', { class: 'section-title' }, tr('section.loading')),
     h('div', { class: 'grid' }, ...Array.from({ length: 6 }, () => h('div', { class: 'card skeleton' }))),
   );
 }
@@ -149,11 +149,11 @@ function renderBanner(): void {
   clear(banner);
   const rel = state.launcherUpdate;
   if (!rel) return;
-  const btn = h('button', { class: 'btn primary small' }, updateLabel()) as HTMLButtonElement;
+  const btn = h('button', { class: 'btn primary' }, updateLabel()) as HTMLButtonElement;
   btn.addEventListener('click', () => applyLauncherUpdate(btn));
   banner.append(
     h('div', { class: 'banner' },
-      svg(icons.sparkle),
+      svg(icons.download),
       h('div', { class: 'banner-text' }, h('b', null, tr('banner.new', { v: rel.version })), h('span', { class: 'muted' }, tr('banner.current', { v: state.view?.launcherVersion ?? '' }))),
       h('button', { class: 'btn link', onclick: () => act.openUrl(rel.url) }, tr('banner.whatsNew')),
       btn,

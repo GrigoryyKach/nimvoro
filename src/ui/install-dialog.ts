@@ -25,9 +25,9 @@ export function askInstallOptions(tool: Tool): Promise<InstallChoice | null> {
       m.close();
     };
     const name = toolName(tool);
-    const dir = h('input', { class: 'text-input mono', type: 'text', value: tool.targetDir, spellcheck: 'false', 'aria-label': tr('install.folder') }) as HTMLInputElement;
+    const dir = h('input', { class: 'input text-input mono', type: 'text', value: tool.targetDir, spellcheck: 'false', 'aria-label': tr('install.folder') }) as HTMLInputElement;
     const browse = h('button', {
-      class: 'btn ghost small',
+      class: 'btn small',
       onclick: async () => {
         const picked = await pickFolder({ directory: true, title: tr('install.pick', { name }), defaultPath: dir.value || undefined });
         if (typeof picked === 'string') dir.value = picked;
@@ -51,16 +51,16 @@ export function askInstallOptions(tool: Tool): Promise<InstallChoice | null> {
       h('div', { class: 'install-body' },
         h('div', { class: 'install-ident' },
           toolIcon(tool, 44),
-          h('div', null, h('div', { class: 'name' }, name), tool.release && h('div', { class: 'muted mono' }, `V${tool.release.version}`)),
+          h('div', null, h('div', { class: 'name' }, name), tool.release && h('div', { class: 'muted mono' }, `v${tool.release.version}`)),
         ),
-        h('h3', { class: 'caps' }, tr('install.folder')),
+        h('h3', { class: 'section-title' }, tr('install.folder')),
         h('div', { class: 'folder-row' }, dir, browse),
         h('label', { class: 'set-row check-row' },
           h('div', { class: 'set-text' }, h('div', { class: 'set-title' }, tr('install.desktop')), h('div', { class: 'hint' }, tr(isLinux() ? 'install.startMenu.linux' : 'install.startMenu'))),
           h('span', { class: 'switch' }, desktopBox, h('span')),
         ),
       ),
-      h('div', { class: 'modal-actions' }, h('button', { class: 'btn ghost', onclick: () => finish(null) }, tr('common.cancel')), ok),
+      h('div', { class: 'modal-actions' }, h('button', { class: 'btn', onclick: () => finish(null) }, tr('common.cancel')), ok),
     );
     const m = openModal(root, 'install', () => {
       if (!answered) {

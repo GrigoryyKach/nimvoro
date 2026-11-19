@@ -48,7 +48,7 @@ export function openSettings(): void {
     root.replaceChildren(
       modalHeader(tr('settings.title'), () => m.close(), `NIMVORO ${v.launcherVersion}`),
       h('div', { class: 'settings-body' },
-        h('h3', { class: 'caps' }, tr('settings.install')),
+        h('h3', { class: 'section-title' }, tr('settings.install')),
         h('div', { class: 'set-card' },
           h('div', { class: 'set-row' },
             h('div', { class: 'set-text' },
@@ -57,9 +57,9 @@ export function openSettings(): void {
               h('div', { class: 'path mono', title: s.installRoot }, s.installRoot),
             ),
             h('div', { class: 'set-actions' },
-              h('button', { class: 'btn ghost small', onclick: () => api.openPath(s.installRoot) }, tr('settings.open')),
+              h('button', { class: 'btn small', onclick: () => api.openPath(s.installRoot) }, tr('settings.open')),
               h('button', {
-                class: 'btn ghost small',
+                class: 'btn small',
                 onclick: async () => {
                   const picked = await pickFolder({ directory: true, title: tr('settings.root'), defaultPath: s.installRoot });
                   if (typeof picked === 'string') save({ installRoot: picked });
@@ -68,7 +68,7 @@ export function openSettings(): void {
             ),
           ),
         ),
-        h('h3', { class: 'caps' }, tr('settings.updates')),
+        h('h3', { class: 'section-title' }, tr('settings.updates')),
         h('div', { class: 'set-card' },
           switchRow(tr('settings.checkOnStart'), tr('settings.checkOnStart.hint'), s.checkUpdatesOnStart, v => save({ checkUpdatesOnStart: v })),
           switchRow(tr('settings.autoInstall'), tr('settings.autoInstall.hint'), s.autoInstallUpdates, v => save({ autoInstallUpdates: v })),
@@ -76,7 +76,7 @@ export function openSettings(): void {
           h('div', { class: 'set-row' },
             h('div', { class: 'set-text' }, h('div', { class: 'set-title' }, tr('settings.checkNow')), h('div', { class: 'hint' }, tr('settings.checkNow.hint'))),
             h('button', {
-              class: 'btn ghost small',
+              class: 'btn small',
               onclick: async () => {
                 await act.reload(true);
                 await checkLauncherUpdate(true);
@@ -86,7 +86,7 @@ export function openSettings(): void {
             }, svg(icons.refresh), tr('settings.check')),
           ),
         ),
-        h('h3', { class: 'caps' }, tr('settings.appearance')),
+        h('h3', { class: 'section-title' }, tr('settings.appearance')),
         h('div', { class: 'set-card' },
           h('div', { class: 'set-row' },
             h('div', { class: 'set-text' }, h('div', { class: 'set-title' }, tr('settings.theme'))),
@@ -98,7 +98,7 @@ export function openSettings(): void {
           ),
         ),
         ...supportSection(),
-        h('h3', { class: 'caps' }, tr('settings.about')),
+        h('h3', { class: 'section-title' }, tr('settings.about')),
         h('div', { class: 'set-card' },
           h('div', { class: 'set-row' },
             h('div', { class: 'set-text' },
@@ -106,8 +106,8 @@ export function openSettings(): void {
               h('div', { class: 'hint' }, tr('settings.about.text')),
             ),
             h('div', { class: 'set-actions' },
-              h('button', { class: 'btn ghost small', onclick: () => api.openPath(v.dataDir) }, tr('settings.dataFolder')),
-              h('button', { class: 'btn ghost small', onclick: () => act.openUrl('https://github.com/GrigoryyKach/nimvoro') }, 'GitHub', svg(icons.external, 'ico tiny')),
+              h('button', { class: 'btn small', onclick: () => api.openPath(v.dataDir) }, tr('settings.dataFolder')),
+              h('button', { class: 'btn small', onclick: () => act.openUrl('https://github.com/GrigoryyKach/nimvoro') }, 'GitHub', svg(icons.external)),
             ),
           ),
         ),

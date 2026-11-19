@@ -64,7 +64,7 @@ Put it in the root of the tool's repository, on the `main` branch. Base fields a
 | `name`, `tagline` | yes | Card title and subtitle |
 | `description`, `features` | yes | Text in the popup |
 | `category` | no | Short label shown as a badge. It is display-only: the launcher never groups or filters by it |
-| `accent` | no | Two gradient colours for the logo and the card accents |
+| `accent` | no | Legacy field, no longer drawn. The launcher shows a tool's accent as a 2 px rule under its name, from a table by `id` in `src/ui/cards.ts` (`TOOL_ACCENTS`); add a row there for a new tool |
 | `icon` | yes | PNG 256x256 (or larger), a path inside the repository |
 | `screenshots` | no | PNG/JPG for the carousel, paths inside the repository |
 | `exe` | yes | Path to the exe inside the extracted zip. **Always the Windows one**, whatever `platforms` says |
@@ -109,7 +109,7 @@ The result is saved to the tool's config. So changing the language in the launch
 
 ### Theme
 
-Every tool has a `theme` setting: `system`, `light` or `dark` (default `system`; System follows Windows). The launcher has the same setting. Use the suite palette: accent gradient `#4f6bff` to `#8a5bff`, Segoe UI.
+Every tool has a `theme` setting: `system`, `light` or `dark` (default `system`; System follows Windows). The launcher has the same setting. Use the suite base: graphite ramp, IBM Plex Sans and Mono, one solid accent per app (no gradients, no glow). For HTML apps copy `src/tokens.css` and `src/fonts/` from the launcher byte for byte; see `tasks/unslop-web-base.md`.
 
 ### Shortcuts
 

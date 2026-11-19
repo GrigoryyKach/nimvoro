@@ -62,7 +62,7 @@ export function confirmDialog(o: { title: string; text: string; confirm: string;
       h(
         'div',
         { class: 'modal-actions' },
-        h('button', { class: 'btn ghost', onclick: () => finish(false) }, tr('common.cancel')),
+        h('button', { class: 'btn', onclick: () => finish(false) }, tr('common.cancel')),
         h('button', { class: `btn ${o.danger ? 'danger' : 'primary'}`, autofocus: true, onclick: () => finish(true) }, o.confirm),
       ),
     );
