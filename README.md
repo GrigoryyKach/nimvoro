@@ -39,8 +39,6 @@ The launcher does not need to be rebuilt: it reads [`catalog.json`](catalog.json
 3. Add a line `{ "id": "...", "repo": "owner/repo" }` to `catalog.json`.
 
 Details, including the manifest format, the language marker, themes, shortcuts and the update protocol: [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md).
-The icons of the suite are cut from the artwork in `tools/icons-source.png` by `tools/make_icons.py` (Python 3 with Pillow, numpy and scipy):
-`python tools/make_icons.py <OwnLauncher root>` writes `assets/icon.png` and `assets/icon.ico` into each tool repo and a contact sheet to `tasks/new-icons-result.png`.
 
 ## Layout
 
