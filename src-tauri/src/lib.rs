@@ -4,6 +4,7 @@
 //! - `install`   - install, update and uninstall;
 //! - `shortcuts` - Start-menu / desktop `.lnk` files (Windows) and `.desktop` entries (Linux);
 //! - `platform`  - Windows/Linux differences that need no system access (manifest fields, self-update mode, `.desktop` text);
+//! - `updater`   - self-update of the launcher through the signed Tauri updater;
 //! - `store`     - settings and the list of installed tools.
 //!
 //! Errors returned to the UI are codes (`E_...[:arg|arg]`); the frontend translates them (`src/i18n.ts`).
@@ -13,6 +14,7 @@ mod install;
 pub mod platform;
 mod shortcuts;
 mod store;
+pub mod updater;
 
 use catalog::Release;
 pub use catalog::Tool;
@@ -39,6 +41,8 @@ struct AppState {
     busy: Mutex<HashSet<String>>,
     /// `--update <id>` from the command line at startup: the frontend picks it up once the catalog is loaded.
     pending_update: Mutex<Option<String>>,
+    /// Version of this launcher (from `tauri.conf.json`, the one the updater compares with).
+    version: String,
 }
 
 #[derive(Serialize)]
@@ -71,7 +75,7 @@ struct View {
 struct LauncherUpdate {
     #[serde(flatten)]
     release: Release,
-    /// `installer` (Windows), `appimage` (replace in place) or `page` (only open the release page).
+    /// `updater` (signed in-app update) or `page` (only open the release page).
     mode: &'static str,
 }
 
@@ -126,7 +130,7 @@ fn view(st: &AppState) -> View {
     View {
         tools,
         settings,
-        launcher_version: env!("CARGO_PKG_VERSION").into(),
+        launcher_version: st.version.clone(),
         data_dir: store::data_dir().display().to_string(),
         platform: platform::OS.into(),
         raw_base: catalog::raw_base(),
@@ -319,29 +323,27 @@ fn take_pending_update(st: State<'_, AppState>) -> Option<String> {
 
 /// New version of the launcher itself, if any, and how it can be applied on this system.
 #[tauri::command]
-async fn launcher_update_check() -> Result<Option<LauncherUpdate>, String> {
-    let rel = catalog::latest_release(&catalog::client(), catalog::LAUNCHER_REPO, Some(platform::launcher_asset())).await?;
-    let mode = platform::current_update_mode();
-    let newer = is_newer(&rel.version, env!("CARGO_PKG_VERSION")) && platform::update_possible(mode, rel.asset_url.is_some());
-    Ok(newer.then(|| LauncherUpdate { release: rel, mode: mode.as_str() }))
+async fn launcher_update_check(st: State<'_, AppState>) -> Result<Option<LauncherUpdate>, String> {
+    let rel = catalog::latest_release(&catalog::client(), catalog::LAUNCHER_REPO, None).await?;
+    let newer = is_newer(&rel.version, &st.version);
+    Ok(newer.then(|| LauncherUpdate { release: rel, mode: platform::current_update_mode().as_str() }))
 }
 
-/// Windows: downloads the new installer, runs it and closes the launcher.
-/// Linux AppImage: downloads the new AppImage next to the current one, replaces it and starts it again.
-/// Linux without a writable AppImage: opens the release page.
+/// `updater` mode: downloads the signed installer, checks the signature and installs it without any wizard.
+/// Windows: the installer closes this process and starts the new version. Linux: the file is replaced, then the app restarts.
+/// `page` mode (a deb without `pkexec`): opens the release page.
 #[tauri::command]
-async fn launcher_update_apply(on_progress: Channel<install::Progress>, app: AppHandle) -> Result<(), String> {
-    let LauncherUpdate { release: rel, mode } = launcher_update_check().await?.ok_or("E_NO_UPDATE")?;
+async fn launcher_update_apply(on_progress: Channel<install::Progress>, app: AppHandle, st: State<'_, AppState>) -> Result<(), String> {
+    let LauncherUpdate { release: rel, mode } = launcher_update_check(st).await?.ok_or("E_NO_UPDATE")?;
     if mode == platform::UpdateMode::ReleasePage.as_str() {
         return app.opener().open_url(rel.url, None::<&str>).map_err(|e| e.to_string());
     }
+    updater::install(&app, &on_progress).await?;
+    // Windows never gets here: the installer ends this process. Linux: start the new file once this process is gone.
+    let _ = on_progress.send(install::Progress::Done { version: rel.version.clone() });
     #[cfg(unix)]
-    if mode == platform::UpdateMode::AppImage.as_str() {
-        let target = platform::appimage_path().ok_or("E_NO_UPDATE")?;
-        let new = target.with_file_name(format!(".{}.new", target.file_name().unwrap_or_default().to_string_lossy()));
-        install::download_asset(&rel, &new, &on_progress).await?;
-        platform::replace_executable(&new, &target).map_err(|e| format!("E_FILE_IO:{}|{e}", target.display()))?;
-        let _ = on_progress.send(install::Progress::Done { version: rel.version.clone() });
+    {
+        let target = platform::appimage_path().or_else(|| std::env::current_exe().ok()).ok_or("E_NO_UPDATE")?;
         relaunch(&target);
         app.exit(0);
         // `exit` can leave the process hanging on some systems; the new instance is waiting for this one to go.
@@ -349,20 +351,7 @@ async fn launcher_update_apply(on_progress: Channel<install::Progress>, app: App
             std::thread::sleep(std::time::Duration::from_millis(1500));
             std::process::exit(0);
         });
-        return Ok(());
     }
-    let tool = Tool {
-        id: "nimvoro".into(),
-        repo: catalog::LAUNCHER_REPO.into(),
-        manifest: serde_json::Value::Null,
-        release: Some(rel.clone()),
-        error: None,
-    };
-    let path = install::download_to_temp(&tool, &on_progress).await?;
-    let exe = path.with_extension("exe");
-    std::fs::rename(&path, &exe).map_err(|e| e.to_string())?;
-    app.opener().open_path(exe.display().to_string(), None::<&str>).map_err(|e| e.to_string())?;
-    app.exit(0);
     Ok(())
 }
 
@@ -387,10 +376,12 @@ fn update_arg(args: &[String]) -> Option<String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let context = tauri::generate_context!();
     let state = AppState {
         settings: Mutex::new(store::load_settings()),
         installed: Mutex::new(store::load_installed()),
         pending_update: Mutex::new(update_arg(&std::env::args().collect::<Vec<_>>())),
+        version: context.package_info().version.to_string(),
         ..Default::default()
     };
     tauri::Builder::default()
@@ -407,6 +398,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
         .setup(|_app| {
             store::write_launcher_path();
@@ -426,6 +418,6 @@ pub fn run() {
             launcher_update_check,
             launcher_update_apply,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running NIMVORO");
 }

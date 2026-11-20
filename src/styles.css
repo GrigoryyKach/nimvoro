@@ -206,6 +206,22 @@ html, body { overflow: hidden; user-select: none; }
 .confirm { padding: 24px; }
 .confirm-text { color: var(--text-2); line-height: 20px; margin: 8px 0 0; user-select: text; }
 
+/* launcher self-update overlay: thin bar, no installer window */
+.upd-backdrop { z-index: 80; }
+.upd { max-width: 420px; }
+.upd-body { padding: 24px; }
+.upd-versions { margin-top: 4px; color: var(--muted); font-family: var(--mono); font-size: var(--fs-meta); line-height: 16px; }
+.upd-bar { position: relative; height: 4px; margin-top: 24px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.upd-fill { position: absolute; inset: 0; background: var(--accent); transform: scaleX(0); transform-origin: left; transition: transform 200ms var(--ease); }
+.upd-bar.error .upd-fill { background: var(--bad); transform: scaleX(1); }
+.upd-bar.busy .upd-fill { right: auto; width: 35%; transform: none; animation: updSlide 1.1s var(--ease) infinite; }
+@keyframes updSlide { from { left: -35%; } to { left: 100%; } }
+.upd-row { display: flex; justify-content: space-between; gap: 16px; margin-top: 12px; color: var(--text-2); font-size: var(--fs-small); line-height: 20px; }
+.upd-size { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); }
+.upd-status.err { color: var(--text); user-select: text; }
+.upd-actions { margin-top: 20px; }
+.upd-actions:empty { display: none; }
+
 /* install dialog */
 .install-dialog .install-body { padding: 4px 24px 0; }
 .install-dialog .modal-actions { margin: 0; padding: 20px 24px; }

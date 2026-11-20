@@ -12,16 +12,7 @@ shot() { import -window root "$S/$1.png"; }
 
 shot 01-catalog
 
-# --- self-update: AppImage replaced in place, new instance started
-OLD=$(sha256sum $APP | cut -c1-16)
-click 1179 209 1; shot 02-self-update-progress
-sleep 14
-NEW=$(sha256sum $APP | cut -c1-16)
-check "AppImage replaced by the downloaded one" "[ '$OLD' != '$NEW' ]"
-check "new AppImage is executable" "[ -x $APP ]"
-check "no temporary .new file left" "[ -z \"\$(ls -A /tmp/app | grep '\.new')\" ]"
-check "exactly one launcher process after restart" "[ \$(pgrep -x nimvoro | wc -l) = 1 ]"
-shot 03-after-self-update
+# The launcher's own update is signed (Tauri updater, latest.json) and is not exercised here: the mirror cannot sign.
 
 # --- install Demo Tool (desktop shortcut on by default)
 click 300 552 2; shot 04-install-dialog

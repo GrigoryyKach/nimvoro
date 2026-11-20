@@ -51,8 +51,8 @@ export interface Release {
   digest: string | null;
 }
 
-/** The launcher's own update: `installer` (Windows), `appimage` (replaced in place) or `page` (open the release page). */
-export type LauncherUpdate = Release & { mode: 'installer' | 'appimage' | 'page' };
+/** The launcher's own update: `updater` (signed in-app update, no wizard) or `page` (open the release page). */
+export type LauncherUpdate = Release & { mode: 'updater' | 'page' };
 
 export interface Installed {
   version: string;

@@ -1,7 +1,9 @@
 name: Release
 
 # Builds the NIMVORO installer (NSIS) on Windows and the AppImage + deb on Linux, and publishes one GitHub Release when a vX.Y.Z tag is pushed.
-# The launcher finds the *-setup.exe (Windows) or NIMVORO-linux-x64.AppImage (Linux) asset in the release and offers to update.
+# Every installer is signed with the updater key (secrets TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD; the private key
+# never leaves the secrets, the public half is in tauri.conf.json). The last job publishes latest.json, which an installed launcher
+# reads to update itself with one click. Asset names stay the same as before, so launchers 1.4.1 and older still find *-setup.exe.
 on:
   push:
     tags: ["v*"]
@@ -48,12 +50,26 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: NIMVORO ${{ github.ref_name }}
           releaseBody: "Windows: the *-setup.exe installer. Linux: NIMVORO-linux-x64.AppImage (chmod +x and run) or the .deb. An installed NIMVORO offers the update by itself."
           releaseDraft: false
           prerelease: false
+          # latest.json is written by the publish job once the Linux files are in too.
+          includeUpdaterJson: false
+
+      - name: Attach the installer signature
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sig=$(ls src-tauri/target/release/bundle/nsis/*-setup.exe.sig)
+          test -s "$sig" || { echo "No signature: is TAURI_SIGNING_PRIVATE_KEY set?"; exit 1; }
+          gh release upload "$GITHUB_REF_NAME" "$sig" --clobber
 
   linux:
     name: Linux
@@ -102,6 +118,9 @@ jobs:
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
       - name: Build the AppImage and the deb
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npx tauri build --bundles deb,appimage
 
       - name: Name the assets
@@ -109,10 +128,61 @@ jobs:
           mkdir dist-linux
           cp src-tauri/target/release/bundle/appimage/*.AppImage dist-linux/NIMVORO-linux-x64.AppImage
           cp src-tauri/target/release/bundle/deb/*.deb dist-linux/NIMVORO-linux-x64.deb
+          # Signatures for the updater: the AppImage one is required (a missing one fails the build).
+          cp src-tauri/target/release/bundle/appimage/*.AppImage.sig dist-linux/NIMVORO-linux-x64.AppImage.sig
+          test -s dist-linux/NIMVORO-linux-x64.AppImage.sig
+          # The deb signature is optional: without it the deb launcher keeps the "download" behaviour.
+          if ls src-tauri/target/release/bundle/deb/*.deb.sig >/dev/null 2>&1; then
+            cp src-tauri/target/release/bundle/deb/*.deb.sig dist-linux/NIMVORO-linux-x64.deb.sig
+          else
+            echo "::warning::The bundler produced no .deb.sig; latest.json will have no deb entry"
+          fi
           ls -l dist-linux
 
       - name: Attach to the release
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" dist-linux/NIMVORO-linux-x64.AppImage dist-linux/NIMVORO-linux-x64.deb --clobber
+        run: |
+          gh release upload "$GITHUB_REF_NAME" dist-linux/NIMVORO-linux-x64.AppImage dist-linux/NIMVORO-linux-x64.deb dist-linux/NIMVORO-linux-x64.AppImage.sig --clobber
+          if [ -f dist-linux/NIMVORO-linux-x64.deb.sig ]; then gh release upload "$GITHUB_REF_NAME" dist-linux/NIMVORO-linux-x64.deb.sig --clobber; fi
+
+  publish:
+    name: Publish latest.json
+    # Both platform jobs have attached their files and signatures; now the updater manifest goes in.
+    needs: [release, linux]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Build latest.json from the release signatures
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir sigs
+          gh release download "$TAG" --repo "$REPO" --pattern '*.sig' --dir sigs
+          ls -l sigs
+          win=$(cd sigs && ls *-setup.exe.sig | head -n1 | sed "s/[.]sig$//")
+          args=()
+          if [ -f sigs/NIMVORO-linux-x64.deb.sig ]; then
+            args+=(--deb "NIMVORO-linux-x64.deb=sigs/NIMVORO-linux-x64.deb.sig")
+          else
+            echo "::warning::No deb signature: latest.json has no deb entry"
+          fi
+          node scripts/make-latest-json.mjs \
+            --version "${TAG#v}" \
+            --base "https://github.com/$REPO/releases/download/$TAG" \
+            --notes "NIMVORO $TAG: https://github.com/$REPO/releases/tag/$TAG" \
+            --windows "$win=sigs/$win.sig" \
+            --appimage "NIMVORO-linux-x64.AppImage=sigs/NIMVORO-linux-x64.AppImage.sig" \
+            "${args[@]}" \
+            --out latest.json
+          cat latest.json
+          gh release upload "$TAG" --repo "$REPO" latest.json --clobber

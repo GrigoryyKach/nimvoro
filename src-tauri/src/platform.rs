@@ -7,14 +7,6 @@ use std::path::{Path, PathBuf};
 /// `windows` or `linux`: the key used in `platforms` and in the manifest.
 pub const OS: &str = if cfg!(windows) { "windows" } else { "linux" };
 
-/// Asset of the launcher itself in a release.
-pub const LAUNCHER_ASSET_WINDOWS: &str = "*-setup.exe";
-pub const LAUNCHER_ASSET_LINUX: &str = "NIMVORO-linux-x64.AppImage";
-
-pub fn launcher_asset() -> &'static str {
-    if cfg!(windows) { LAUNCHER_ASSET_WINDOWS } else { LAUNCHER_ASSET_LINUX }
-}
-
 /// Manifest string for `os`: on Linux `linux.<key>` (exe, asset), on Windows the top-level field.
 pub fn manifest_str(manifest: &Value, key: &str, os: &str) -> Option<String> {
     let v = if os == "linux" { &manifest["linux"][key] } else { &manifest[key] };
@@ -35,32 +27,34 @@ pub fn supports(manifest: &Value, os: &str) -> bool {
 /// How the launcher updates itself.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UpdateMode {
-    /// Windows: download the installer and run it.
-    Installer,
-    /// Linux AppImage: replace the file in place and re-exec.
-    AppImage,
-    /// Linux without a writable AppImage (deb install and the like): only point to the release page.
+    /// The Tauri updater downloads the signed installer, checks its signature and installs it with no wizard:
+    /// the quiet NSIS installer (Windows), a replaced AppImage or `pkexec dpkg -i` for a deb (Linux).
+    Updater,
+    /// The updater cannot work here (no writable AppImage and no `pkexec`): only point to the release page.
     ReleasePage,
 }
 
 impl UpdateMode {
     pub fn as_str(self) -> &'static str {
         match self {
-            UpdateMode::Installer => "installer",
-            UpdateMode::AppImage => "appimage",
+            UpdateMode::Updater => "updater",
             UpdateMode::ReleasePage => "page",
         }
     }
 }
 
-/// `appimage`: value of `$APPIMAGE` when the file exists; `dir_writable`: can a file be created next to it.
-pub fn update_mode(os: &str, appimage: Option<&Path>, dir_writable: bool) -> UpdateMode {
+/// `appimage`: value of `$APPIMAGE` when the file exists; `dir_writable`: can a file be created next to it;
+/// `pkexec`: the graphical privilege prompt the updater uses to install a deb.
+pub fn update_mode(os: &str, appimage: Option<&Path>, dir_writable: bool, pkexec: bool) -> UpdateMode {
     if os == "windows" {
-        return UpdateMode::Installer;
+        return UpdateMode::Updater;
     }
     match appimage {
-        Some(_) if dir_writable => UpdateMode::AppImage,
-        _ => UpdateMode::ReleasePage,
+        Some(_) if dir_writable => UpdateMode::Updater,
+        Some(_) => UpdateMode::ReleasePage,
+        // Not an AppImage: a deb install, which needs root to be replaced.
+        None if pkexec => UpdateMode::Updater,
+        None => UpdateMode::ReleasePage,
     }
 }
 
@@ -76,15 +70,15 @@ pub fn dir_writable(dir: &Path) -> bool {
     ok
 }
 
+/// Is `name` a file in one of the `PATH` folders?
+pub fn on_path(name: &str) -> bool {
+    std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(name).is_file()))
+}
+
 pub fn current_update_mode() -> UpdateMode {
     let app = appimage_path();
     let writable = app.as_deref().and_then(Path::parent).is_some_and(dir_writable);
-    update_mode(OS, app.as_deref(), writable)
-}
-
-/// Does the release carry what this mode needs? A release page needs no asset.
-pub fn update_possible(mode: UpdateMode, has_asset: bool) -> bool {
-    mode == UpdateMode::ReleasePage || has_asset
+    update_mode(OS, app.as_deref(), writable, on_path("pkexec"))
 }
 
 /// Quotes a path for the `Exec=` key of a `.desktop` file (Desktop Entry spec: quoted argument, reserved characters escaped,
@@ -175,14 +169,4 @@ pub fn spawn_detached(exe: &Path, args: &[String], dir: &Path) -> std::io::Resul
         let _ = child.wait();
     });
     Ok(())
-}
-
-/// Replaces `target` with `new` atomically (same folder, so the rename cannot cross file systems) and makes it executable.
-pub fn replace_executable(new: &Path, target: &Path) -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(new, std::fs::Permissions::from_mode(0o755))?;
-    }
-    std::fs::rename(new, target)
 }

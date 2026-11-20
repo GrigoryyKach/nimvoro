@@ -149,8 +149,8 @@ function renderBanner(): void {
   clear(banner);
   const rel = state.launcherUpdate;
   if (!rel) return;
-  const btn = h('button', { class: 'btn primary' }, updateLabel()) as HTMLButtonElement;
-  btn.addEventListener('click', () => applyLauncherUpdate(btn));
+  const btn = h('button', { class: 'btn primary' }, updateLabel());
+  btn.addEventListener('click', () => applyLauncherUpdate());
   banner.append(
     h('div', { class: 'banner' },
       svg(icons.download),

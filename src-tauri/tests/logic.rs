@@ -75,6 +75,7 @@ fn finds_running() {
 // ───────────────────────── Linux support ─────────────────────────
 
 use nimvoro_lib::platform::{self, UpdateMode};
+use nimvoro_lib::updater;
 use serde_json::json;
 use std::path::Path;
 
@@ -104,17 +105,41 @@ fn manifest_fields_per_platform() {
 #[test]
 fn self_update_decision() {
     let app = Path::new("/home/u/Apps/NIMVORO-linux-x64.AppImage");
-    assert_eq!(platform::update_mode("windows", None, false), UpdateMode::Installer);
-    assert_eq!(platform::update_mode("windows", Some(app), true), UpdateMode::Installer);
-    assert_eq!(platform::update_mode("linux", Some(app), true), UpdateMode::AppImage);
-    // deb install: no $APPIMAGE
-    assert_eq!(platform::update_mode("linux", None, false), UpdateMode::ReleasePage);
-    // AppImage in a folder the user cannot write to
-    assert_eq!(platform::update_mode("linux", Some(app), false), UpdateMode::ReleasePage);
-    // The release page needs no asset; the other modes do.
-    assert!(platform::update_possible(UpdateMode::ReleasePage, false));
-    assert!(!platform::update_possible(UpdateMode::AppImage, false));
-    assert!(platform::update_possible(UpdateMode::Installer, true));
+    // Windows: always the quiet installer, whatever else is true.
+    assert_eq!(platform::update_mode("windows", None, false, false), UpdateMode::Updater);
+    assert_eq!(platform::update_mode("windows", Some(app), true, true), UpdateMode::Updater);
+    // AppImage in a writable folder: replaced in place by the updater.
+    assert_eq!(platform::update_mode("linux", Some(app), true, false), UpdateMode::Updater);
+    // AppImage in a folder the user cannot write to: only the release page.
+    assert_eq!(platform::update_mode("linux", Some(app), false, true), UpdateMode::ReleasePage);
+    // deb install (no $APPIMAGE): the updater installs it through pkexec; without pkexec only the page.
+    assert_eq!(platform::update_mode("linux", None, false, true), UpdateMode::Updater);
+    assert_eq!(platform::update_mode("linux", None, false, false), UpdateMode::ReleasePage);
+    assert_eq!(UpdateMode::Updater.as_str(), "updater");
+    assert_eq!(UpdateMode::ReleasePage.as_str(), "page");
+}
+
+#[test]
+fn update_versions_and_endpoint_override() {
+    // The banner shows an update only for a strictly newer release; a prerelease or an older tag never does.
+    assert!(is_newer("1.5.1", "1.5.0"));
+    assert!(is_newer("v1.6.0", "1.5.9"));
+    assert!(!is_newer("1.5.0", "1.5.0"));
+    assert!(!is_newer("1.4.1", "1.5.0"));
+    // Test endpoint override: blank means "not set".
+    assert_eq!(updater::endpoint_override(None), None);
+    assert_eq!(updater::endpoint_override(Some("  ".into())), None);
+    assert_eq!(updater::endpoint_override(Some(" http://127.0.0.1:9/latest.json ".into())).as_deref(), Some("http://127.0.0.1:9/latest.json"));
+}
+
+#[test]
+fn update_errors_become_codes() {
+    use tauri_plugin_updater::Error;
+    // A bad signature has its own code (retrying does not help); network problems carry the text.
+    assert_eq!(updater::error_code(&Error::SignatureUtf8("x".into())), "E_UPDATE_SIGNATURE");
+    assert!(updater::error_code(&Error::ReleaseNotFound).starts_with("E_UPDATE_NETWORK:"));
+    assert!(updater::error_code(&Error::Network("boom".into())).ends_with("boom`"));
+    assert!(updater::error_code(&Error::EmptyEndpoints).starts_with("E_UPDATE:"));
 }
 
 #[test]
@@ -197,24 +222,6 @@ fn extracts_tar_gz_keeping_exec_bit() {
         let mode = std::fs::metadata(dest.join("random-wheel")).unwrap().permissions().mode();
         assert_eq!(mode & 0o111, 0o111, "executable bit lost: {mode:o}");
         assert_eq!(std::fs::metadata(dest.join("icon.png")).unwrap().permissions().mode() & 0o111, 0);
-    }
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-#[test]
-fn replaces_executable_in_place() {
-    let dir = scratch("replace");
-    let target = dir.join("NIMVORO.AppImage");
-    let new = dir.join(".NIMVORO.AppImage.new");
-    std::fs::write(&target, b"old").unwrap();
-    std::fs::write(&new, b"new").unwrap();
-    platform::replace_executable(&new, &target).unwrap();
-    assert_eq!(std::fs::read(&target).unwrap(), b"new");
-    assert!(!new.exists());
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        assert_eq!(std::fs::metadata(&target).unwrap().permissions().mode() & 0o777, 0o755);
     }
     let _ = std::fs::remove_dir_all(dir);
 }

@@ -1,8 +1,9 @@
-// Update of the launcher itself: the banner above the catalog.
+// Update of the launcher itself: the banner above the catalog, and the overlay that shows the progress.
 import { api } from '../api';
 import { errorText, t as tr } from '../i18n';
 import { patch, state } from '../store';
 import { toast } from './toast';
+import { showUpdateOverlay } from './update-overlay';
 
 export async function checkLauncherUpdate(manual = false): Promise<void> {
   try {
@@ -13,24 +14,23 @@ export async function checkLauncherUpdate(manual = false): Promise<void> {
   }
 }
 
-/** Banner button: "Update to X", or "Open release page" where the launcher cannot replace itself (deb install). */
+/** Banner button: "Update to X", or "Open release page" where the launcher cannot update itself (a deb without pkexec). */
 export function updateLabel(): string {
   const u = state.launcherUpdate;
   return u?.mode === 'page' ? tr('banner.openPage') : tr('banner.updateTo', { v: u?.version ?? '' });
 }
 
-export async function applyLauncherUpdate(btn: HTMLButtonElement): Promise<void> {
-  btn.disabled = true;
-  try {
-    await api.launcherUpdateApply(p => {
-      if (state.launcherUpdate?.mode === 'appimage' && p.stage === 'done') btn.textContent = tr('banner.restarting');
-      else
-      if (p.stage === 'download') btn.textContent = tr('banner.downloading', { p: p.total ? Math.floor((p.received / p.total) * 100) : 0 });
-      else btn.textContent = tr('banner.launching');
-    });
-  } catch (e) {
-    btn.disabled = false;
-    btn.textContent = updateLabel();
-    toast(errorText(e), 'error');
+export async function applyLauncherUpdate(): Promise<void> {
+  const u = state.launcherUpdate;
+  if (!u) return;
+  if (u.mode === 'page') {
+    // Nothing to download: the backend opens the release page.
+    try {
+      await api.launcherUpdateApply(() => {});
+    } catch (e) {
+      toast(errorText(e), 'error');
+    }
+    return;
   }
+  showUpdateOverlay(state.view?.launcherVersion ?? '', u.version, u.url);
 }

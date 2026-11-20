@@ -160,6 +160,18 @@ Never test against the real `%APPDATA%\NIMVORO` or installed programs. The launc
 |---|---|
 | `NIMVORO_DATA_DIR` | settings, installed list, cache and `launcher.json` go here instead of the config folder |
 | `NIMVORO_START_MENU_DIR`, `NIMVORO_DESKTOP_DIR` | where the menu and desktop shortcuts are written |
+| `NIMVORO_UPDATER_ENDPOINT` | replaces the `latest.json` URL the launcher reads to update itself (a test server on `127.0.0.1`). The signature is still checked against the public key of that build, so it cannot install an unsigned file; a plain `http` endpoint also needs `dangerousInsecureTransportProtocol` in the build's updater config, which only test builds set |
 | `NIMVORO_TEST_BASE_URL` | a local mirror of GitHub, for example `http://127.0.0.1:8000`: `<base>/<owner>/<repo>/main/<path>` replaces `raw.githubusercontent.com`, `<base>/repos/<owner>/<repo>/releases/latest` replaces the API (a file with the JSON GitHub would return), and the asset URLs in it can point anywhere, e.g. `<base>/assets/tool.tar.gz` |
 
-The Linux check in `docker/` uses the mirror to install a demo tool from a locally built `.tar.gz` (before a tool has a Linux release), update it, and update the launcher AppImage over itself, under Xvfb.
+The Linux check in `docker/` uses the mirror to install a demo tool from a locally built `.tar.gz` (before a tool has a Linux release) and update it, under Xvfb.
+
+### The launcher's own update
+
+The launcher updates itself with the Tauri updater plugin (`src-tauri/src/updater.rs`), not with the tool protocol above:
+
+1. The banner comes from the GitHub release check. "Update" opens an overlay (title, `old → new`, a thin progress bar with MB, then "Installing…").
+2. The updater reads `latest.json` from the latest release, downloads the installer, **verifies its minisign signature** against `plugins.updater.pubkey` and only then installs. A bad signature never installs; the overlay shows the error, "Try again" and "Download manually".
+3. **Windows:** the quiet NSIS installer runs in `/UPDATE` mode with no window, keeps the install folder, the Start-menu and desktop shortcuts as they are (it does not create a desktop shortcut that was not there), and starts the new version itself. The installed tools, `%APPDATA%NIMVORO` and the language are not touched. **Linux AppImage:** the file is replaced in place and the launcher restarts. **Linux deb:** installed with `pkexec dpkg -i`; where `pkexec` is missing the banner button only opens the release page.
+4. A tool's own "Update" button still calls `NIMVORO.exe --update <id>`; that protocol is unchanged.
+
+Releases are signed in CI; see "Update signing" in the README. The private key exists only in the Actions secrets.
