@@ -19,6 +19,7 @@ const TOOL_ACCENTS: Record<string, [string, string]> = {
   'smart-switcher': ['#5b78ff', '#3f5bf0'],
   'fps-overlay': ['#4fc3f7', '#0b6e9f'],
   timelyx: ['#e8669a', '#b0306a'],
+  chronex: ['#4f8ef7', '#1f65d1'],
 };
 
 /** The signature: a short 2 px rule in the tool's accent colour, placed under its name. */
