@@ -20,6 +20,7 @@ const TOOL_ACCENTS: Record<string, [string, string]> = {
   'fps-overlay': ['#4fc3f7', '#0b6e9f'],
   timelyx: ['#e8669a', '#b0306a'],
   chronex: ['#4f8ef7', '#1f65d1'],
+  padyx: ['#ab7cf0', '#7440d8'],
 };
 
 /** The signature: a short 2 px rule in the tool's accent colour, placed under its name. */
