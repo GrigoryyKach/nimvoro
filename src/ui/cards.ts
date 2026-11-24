@@ -8,7 +8,7 @@ import { icons } from '../icons';
 import { percent, state } from '../store';
 import { openMenu, type MenuItem } from './menu';
 
-/** Each tool's own accent (dark theme, light theme), from the suite's per-app table. Used only for the 2 px rule under the name. */
+/** Fallback accents (dark theme, light theme) by tool id, used when a manifest has no `accent`. The manifest wins (see `toolAccent`). */
 const TOOL_ACCENTS: Record<string, [string, string]> = {
   'random-wheel': ['#ec5b45', '#c93a25'],
   'save-urls': ['#e0a82e', '#946500'],
@@ -21,11 +21,21 @@ const TOOL_ACCENTS: Record<string, [string, string]> = {
   timelyx: ['#e8669a', '#b0306a'],
   chronex: ['#4f8ef7', '#1f65d1'],
   padyx: ['#ab7cf0', '#7440d8'],
+  thermora: ['#f5813f', '#c2560c'],
 };
+
+const HEX = /^#[0-9a-fA-F]{3,8}$/;
+
+/** The tool's accent pair: `manifest.accent` when it is two hex colours, else the fallback table by id. */
+export function toolAccent(t: Tool): [string, string] | undefined {
+  const a = t.manifest?.accent;
+  if (Array.isArray(a) && a.length >= 2 && HEX.test(a[0]) && HEX.test(a[1])) return [a[0], a[1]];
+  return TOOL_ACCENTS[t.id];
+}
 
 /** The signature: a short 2 px rule in the tool's accent colour, placed under its name. */
 export function toolRule(t: Tool): HTMLElement {
-  const own = TOOL_ACCENTS[t.id];
+  const own = toolAccent(t);
   const rule = h('span', { class: 'rule', 'aria-hidden': 'true' });
   if (own) rule.style.cssText = `--ta-dark:${own[0]};--ta-light:${own[1]}`;
   return rule;

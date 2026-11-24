@@ -64,7 +64,7 @@ Put it in the root of the tool's repository, on the `main` branch. Base fields a
 | `name`, `tagline` | yes | Card title and subtitle |
 | `description`, `features` | yes | Text in the popup |
 | `category` | no | Short label shown as a badge. It is display-only: the launcher never groups or filters by it |
-| `accent` | no | Legacy field, no longer drawn. The launcher shows a tool's accent as a 2 px rule under its name, from a table by `id` in `src/ui/cards.ts` (`TOOL_ACCENTS`); add a row there for a new tool |
+| `accent` | no | Two hex colours `["#dark", "#light"]` (dark theme, light theme). The launcher draws them as the 2 px rule under the tool's name, read live from the manifest, so a new tool needs no launcher rebuild. Without it the launcher falls back to a table by `id` (`TOOL_ACCENTS` in `src/ui/cards.ts`), and then to its own accent |
 | `icon` | yes | PNG 256x256 (or larger), a path inside the repository |
 | `screenshots` | no | PNG/JPG for the carousel, paths inside the repository |
 | `exe` | yes | Path to the exe inside the extracted zip. **Always the Windows one**, whatever `platforms` says |
