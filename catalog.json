@@ -10,5 +10,6 @@
   { "id": "timelyx", "repo": "GrigoryyKach/timelyx" },
   { "id": "chronex", "repo": "GrigoryyKach/chronex-app" },
   { "id": "padyx", "repo": "GrigoryyKach/padyx" },
-  { "id": "thermora", "repo": "GrigoryyKach/thermora" }
+  { "id": "thermora", "repo": "GrigoryyKach/thermora" },
+  { "id": "cashcycle", "repo": "GrigoryyKach/cashcycle" }
 ]
